@@ -1,0 +1,28 @@
+{
+  "//": "Template — replace <SKILL_DIR> with the absolute path to this prompt-coach directory, then merge into your Claude Code settings.json.",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"<SKILL_DIR>/scripts/hook_prompt.sh\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"<SKILL_DIR>/scripts/hook_stop.sh\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
