@@ -1,21 +1,92 @@
 # du-skill-collection
 
-Personal collection of Claude Code skills — reusable, distilled lessons from
-real agent sessions. Each skill lives in its own directory with a `SKILL.md`
-that Claude can load when the trigger conditions match.
+A personal collection of [Claude Code](https://claude.com/claude-code) skills —
+reusable, distilled lessons from real agent sessions. Each skill lives in its own
+directory with a `SKILL.md` that Claude loads when its trigger conditions match.
+
+## Skills
+
+| Skill | What it does |
+|-------|--------------|
+| [pptx-flowchart-design](pptx-flowchart-design/SKILL.md) | Building flowcharts in `.pptx` via python-pptx — layout grid, arrow patterns, OOXML gotchas that cause PowerPoint "repair" prompts, and safe editing. |
+| [pptx-slide-design](pptx-slide-design/SKILL.md) | Designing `.pptx` slides via python-pptx — layout, typography, and composition patterns that read as intentional rather than auto-generated. |
+| [prompt-coach](prompt-coach/SKILL.md) | An advisory, session-scoped prompt-quality coaching layer. Surfaces one inline `🧭 coach:` tip per turn, keeps an off-context worklog, and produces on-demand session summaries. Hooks-based; ships **OFF**. |
+
+## Quick start
+
+Clone, then install all skills (symlinks them into `~/.claude/skills/`):
+
+```bash
+git clone https://github.com/ndu-bioinfo/du-skill-collection.git
+cd du-skill-collection
+./install.sh
+```
+
+Restart Claude Code (or open a new session) and the skills are available.
+
+## Install / uninstall
+
+`install.sh` and `uninstall.sh` handle batch or individual skills. They use
+**symlinks**, so a later `git pull` updates every installed skill in place.
+
+```bash
+./install.sh                      # install ALL skills
+./install.sh prompt-coach         # install one
+./install.sh pptx-slide-design pptx-flowchart-design   # install several
+./install.sh --list               # list available skills
+./install.sh --with-hooks prompt-coach   # install + wire prompt-coach's hooks (see below)
+
+./uninstall.sh                    # remove ALL skills installed from this repo
+./uninstall.sh prompt-coach       # remove one
+```
+
+Both are **idempotent** and safe: they only ever touch symlinks pointing back into
+this repo — a real directory or a symlink to somewhere else is left untouched.
+
+Custom locations (e.g. for testing) via env vars:
+
+```bash
+CLAUDE_SKILLS_DIR=~/some/dir CLAUDE_SETTINGS=~/some/settings.json ./install.sh
+```
+
+## prompt-coach hooks
+
+Most skills are pure `SKILL.md` docs and work as soon as they're symlinked.
+**prompt-coach is different** — it runs on Claude Code hooks, which must be wired into
+your `settings.json` to fire. `--with-hooks` does this for you:
+
+```bash
+./install.sh --with-hooks prompt-coach   # wires UserPromptSubmit + Stop hooks
+```
+
+Then enable it per session (it ships OFF and is session-scoped):
+
+```
+/prompt-coach ON        # turn coaching on for this session
+/prompt-coach status
+/prompt-coach summary   # write a session lookback to ./.prompt-coach/
+/prompt-coach OFF
+```
+
+`uninstall.sh prompt-coach` removes only the hook entries that point back into this
+repo, leaving the rest of your `settings.json` intact. To wire the hooks by hand
+instead, see [`prompt-coach/hooks.json`](prompt-coach/hooks.json).
 
 ## Layout
 
 ```
 <skill-name>/
   SKILL.md            # required — YAML frontmatter + guidance
-  references/         # optional — longer docs the skill can pull in
+  references/         # optional — longer docs the skill pulls in on demand
+  scripts/            # optional — helper scripts (e.g. prompt-coach's hooks)
   assets/             # optional — templates, snippets, sample files
+install.sh            # symlink skills into ~/.claude/skills/
+uninstall.sh          # remove them
 ```
 
 Skill names are kebab-case and match the frontmatter `name:`.
 
-## SKILL.md frontmatter
+### SKILL.md frontmatter
 
 ```yaml
 ---
@@ -30,40 +101,16 @@ triggers:            # optional — short phrases that hint at the skill
 ```
 
 Body is Markdown. Keep it task-focused: what to do, what not to do, and the
-non-obvious gotchas that make this worth remembering.
-
-## Skills
-
-<!-- keep alphabetical; one line each -->
-
-- [pptx-flowchart-design](pptx-flowchart-design/SKILL.md) — Building flowcharts
-  in `.pptx` via python-pptx: layout grid, arrow patterns, OOXML gotchas that
-  cause "repair" prompts, and safe editing.
-- [prompt-coach](prompt-coach/SKILL.md) — Session-scoped, advisory prompt-quality
-  coaching via hooks: one inline `🧭 coach:` line per turn, off-context worklog,
-  and on-demand session summaries. Ships OFF; enable per session.
-
-## Using these with Claude Code
-
-Two options:
-
-1. **Symlink into `~/.claude/skills/`** — makes every skill in this repo
-   discoverable in every session:
-   ```bash
-   for d in */; do
-     ln -sfn "$PWD/${d%/}" ~/.claude/skills/"${d%/}"
-   done
-   ```
-2. **Point Claude at the repo path** when starting a session that needs a
-   specific skill.
+non-obvious gotchas that make it worth remembering.
 
 ## Adding a new skill
 
 1. Create `<skill-name>/SKILL.md` with the frontmatter above.
-2. Write the body from real session experience — what tripped you up,
-   what patterns worked. Skip generic advice.
-3. Add one line to the Skills list above.
-4. Commit.
+2. Write the body from real session experience — what tripped you up, what patterns
+   worked. Skip generic advice.
+3. Add a row to the Skills table above.
+4. Commit. `install.sh` will pick it up automatically (it discovers any dir with a
+   `SKILL.md`).
 
-Skills are distilled from things that already went wrong or right — don't
-write speculative ones.
+Skills are distilled from things that already went wrong or right — don't write
+speculative ones.
