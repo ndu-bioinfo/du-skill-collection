@@ -4,8 +4,11 @@
 #   ./install.sh                          # install ALL skills
 #   ./install.sh prompt-coach             # install specific skill(s)
 #   ./install.sh pptx-slide-design pptx-flowchart-design
-#   ./install.sh --with-hooks prompt-coach  # also wire prompt-coach's hooks into settings.json
+#   ./install.sh --no-hooks               # skip wiring prompt-coach's hooks
 #   ./install.sh --list                   # list available skills and exit
+#
+# prompt-coach's hooks are wired into settings.json automatically when it's
+# installed, so a fresh `./install.sh` is all anyone needs. Pass --no-hooks to skip.
 #
 # Symlinks (not copies) so `git pull` updates every installed skill in place.
 # Idempotent: re-running is safe. Override locations with $CLAUDE_SKILLS_DIR /
@@ -21,11 +24,12 @@ usage() { sed -n '2,11p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 # A skill = a top-level dir containing SKILL.md.
 available() { for d in "$REPO"/*/; do [ -f "${d}SKILL.md" ] && basename "$d"; done; }
 
-WITH_HOOKS=0
+WITH_HOOKS=1
 NAMES=()
 for a in "$@"; do
   case "$a" in
-    --with-hooks) WITH_HOOKS=1 ;;
+    --with-hooks) WITH_HOOKS=1 ;;   # kept for back-compat; hooks are on by default
+    --no-hooks) WITH_HOOKS=0 ;;
     --list) available; exit 0 ;;
     -h|--help) usage; exit 0 ;;
     -*) echo "install.sh: unknown option: $a" >&2; exit 2 ;;
@@ -93,8 +97,8 @@ PY
     echo "prompt-coach hooks are wired — enable per session with: /prompt-coach ON"
   else
     echo
-    echo "note: prompt-coach needs its hooks wired to coach. Re-run with --with-hooks,"
-    echo "      or add them manually (see prompt-coach/hooks.json)."
+    echo "note: prompt-coach needs its hooks wired to coach. You passed --no-hooks;"
+    echo "      re-run without it, or add them manually (see prompt-coach/hooks.json)."
   fi
 fi
 

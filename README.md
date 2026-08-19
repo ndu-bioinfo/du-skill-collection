@@ -22,7 +22,9 @@ cd du-skill-collection
 ./install.sh
 ```
 
-Restart Claude Code (or open a new session) and the skills are available.
+Restart Claude Code (or open a new session) and the skills are available. This
+also wires prompt-coach's hooks into your `settings.json` automatically — nothing
+else to set up. (Pass `--no-hooks` to skip that.)
 
 ## Install / uninstall
 
@@ -34,7 +36,7 @@ Restart Claude Code (or open a new session) and the skills are available.
 ./install.sh prompt-coach         # install one
 ./install.sh pptx-slide-design pptx-flowchart-design   # install several
 ./install.sh --list               # list available skills
-./install.sh --with-hooks prompt-coach   # install + wire prompt-coach's hooks (see below)
+./install.sh --no-hooks           # install without wiring prompt-coach's hooks
 
 ./uninstall.sh                    # remove ALL skills installed from this repo
 ./uninstall.sh prompt-coach       # remove one
@@ -53,11 +55,8 @@ CLAUDE_SKILLS_DIR=~/some/dir CLAUDE_SETTINGS=~/some/settings.json ./install.sh
 
 Most skills are pure `SKILL.md` docs and work as soon as they're symlinked.
 **prompt-coach is different** — it runs on Claude Code hooks, which must be wired into
-your `settings.json` to fire. `--with-hooks` does this for you:
-
-```bash
-./install.sh --with-hooks prompt-coach   # wires UserPromptSubmit + Stop hooks
-```
+your `settings.json` to fire. `install.sh` does this automatically whenever prompt-coach
+is installed (wiring the `UserPromptSubmit` + `Stop` hooks); pass `--no-hooks` to skip it.
 
 Then enable it per session (it ships OFF and is session-scoped):
 
