@@ -27,8 +27,15 @@ skills. Read this before making changes. See [README.md](README.md) for user-fac
   (helpers), `assets/` (templates/samples).
 - Skills are **distilled from real sessions** — things that already went wrong or
   right. Don't write speculative skills or generic advice.
-- `install.sh` auto-discovers skills (any dir with a `SKILL.md`). Adding a skill needs
-  no installer change — just add a row to the README skill table.
+- The repo is also a **plugin marketplace** (`.claude-plugin/marketplace.json`). Every skill
+  dir is a single-skill plugin: `SKILL.md` at the plugin root plus
+  `.claude-plugin/plugin.json`; hooks go in `hooks/hooks.json` and reference scripts via
+  `${CLAUDE_PLUGIN_ROOT}` (never absolute paths — plugins are copied into a cache dir on
+  install). Plugins cannot set `statusLine`; step-status wires that via
+  `scripts/wire_statusline.sh`.
+- `install.sh` auto-discovers skills (any dir with a `SKILL.md`). Adding a skill needs no
+  installer change — add a README table row, a `plugin.json`, and a marketplace entry, then
+  run `claude plugin validate .`.
 
 ## Common tasks
 
@@ -41,6 +48,14 @@ skills. Read this before making changes. See [README.md](README.md) for user-fac
 - **prompt-coach checks:**
   `python3 prompt-coach/scripts/render_worklog.py --selfcheck` and
   `for s in prompt-coach/scripts/*.sh; do bash -n "$s"; done`.
+- **step-status checks:**
+  `bash step-status/scripts/steps.sh --selfcheck`, `bash step-status/scripts/wire_statusline.sh --selfcheck`, and
+  `for s in step-status/scripts/*.sh; do bash -n "$s"; done`. `install.sh step-status`
+  edits `statusLine` in settings.json (wraps an existing command or installs standalone) —
+  only when step-status is named explicitly; test against a throwaway `CLAUDE_SETTINGS` first.
+- **settings.json edits never swallow a parse error.** All three python blocks (install.sh,
+  uninstall.sh, wire_statusline.sh) abort on invalid JSON and write via temp + `os.replace`.
+  Keep it that way: a silent `{}` fallback wipes the user's config.
 
 ## Troubleshooting / gotchas
 

@@ -4,11 +4,13 @@
 #   ./install.sh                          # install ALL skills
 #   ./install.sh prompt-coach             # install specific skill(s)
 #   ./install.sh pptx-slide-design pptx-flowchart-design
-#   ./install.sh --no-hooks               # skip wiring prompt-coach's hooks
+#   ./install.sh --no-hooks               # skip wiring prompt-coach/step-status hooks + status line
 #   ./install.sh --list                   # list available skills and exit
 #
 # prompt-coach's hooks are wired into settings.json automatically when it's
 # installed, so a fresh `./install.sh` is all anyone needs. Pass --no-hooks to skip.
+# step-status's status line (wrap or standalone) + SessionStart hook are wired only when
+# you name it explicitly (`./install.sh step-status`), since that replaces statusLine.
 #
 # Symlinks (not copies) so `git pull` updates every installed skill in place.
 # Idempotent: re-running is safe. Override locations with $CLAUDE_SKILLS_DIR /
@@ -38,12 +40,14 @@ for a in "$@"; do
 done
 
 # No names → all skills.
+EXPLICIT=${#NAMES[@]}
 if [ ${#NAMES[@]} -eq 0 ]; then
   while IFS= read -r s; do NAMES+=("$s"); done < <(available)
 fi
 
 mkdir -p "$SKILLS_DIR"
 installed_prompt_coach=0
+installed_step_status=0
 
 for name in "${NAMES[@]}"; do
   src="$REPO/$name"
@@ -59,21 +63,38 @@ for name in "${NAMES[@]}"; do
   ln -sfn "$src" "$dst"
   echo "installed: $name -> $dst"
   [ "$name" = "prompt-coach" ] && installed_prompt_coach=1
+  [ "$name" = "step-status" ] && installed_step_status=1
 done
+
+# step-status renders in the status line. Plugins can't set statusLine, so wire it here
+# (wrap an existing command or install standalone) plus the SessionStart hook — but only
+# when step-status was asked for by name: replacing statusLine is not a side effect anyone
+# installing the pptx skills should get.
+if [ "$installed_step_status" = 1 ]; then
+  if [ "$WITH_HOOKS" = 1 ] && [ "$EXPLICIT" -gt 0 ]; then
+    CLAUDE_SETTINGS="$SETTINGS" bash "$REPO/step-status/scripts/wire_statusline.sh"
+  else
+    echo "note: step-status status line not wired. Run: ./install.sh step-status"
+    echo "      (or bash step-status/scripts/wire_statusline.sh) to wrap your status line."
+  fi
+fi
 
 # prompt-coach only coaches once its hooks are wired into settings.json. Do that
 # only on explicit --with-hooks (editing settings is opt-in).
 if [ "$installed_prompt_coach" = 1 ]; then
   if [ "$WITH_HOOKS" = 1 ]; then
     REPO="$REPO" SETTINGS="$SETTINGS" python3 - <<'PY'
-import json, os
+import json, os, sys
 settings = os.environ["SETTINGS"]; repo = os.environ["REPO"]
 data = {}
 if os.path.exists(settings):
-    with open(settings) as f:
-        try: data = json.load(f) or {}
-        except Exception: data = {}
-hooks = data.setdefault("hooks", {})
+    with open(settings) as f: raw = f.read()
+    if raw.strip():
+        try: data = json.loads(raw)
+        except Exception as e: sys.exit(f"refusing to rewrite {settings}: not valid JSON ({e})")
+if not isinstance(data, dict): sys.exit(f"{settings} is not a JSON object")
+hooks = data.get("hooks") if isinstance(data.get("hooks"), dict) else {}
+data["hooks"] = hooks
 entries = {
   "UserPromptSubmit": {"hooks": [{"type": "command",
      "command": f'bash "{repo}/prompt-coach/scripts/hook_prompt.sh"', "timeout": 10}]},
@@ -90,15 +111,17 @@ for ev, grp in entries.items():
     if not present(ev, cmd):
         hooks[ev].append(grp); added.append(ev)
 os.makedirs(os.path.dirname(settings) or ".", exist_ok=True)
-with open(settings, "w") as f:
+tmp = settings + ".tmp"
+with open(tmp, "w") as f:
     json.dump(data, f, indent=2); f.write("\n")
+os.replace(tmp, settings)
 print("hooks wired into " + settings + ": " + (", ".join(added) if added else "already present"))
 PY
     echo "prompt-coach hooks are wired — enable per session with: /prompt-coach ON"
   else
     echo
     echo "note: prompt-coach needs its hooks wired to coach. You passed --no-hooks;"
-    echo "      re-run without it, or add them manually (see prompt-coach/hooks.json)."
+    echo "      re-run without it, or add them manually (see prompt-coach/hooks/hooks.json)."
   fi
 fi
 

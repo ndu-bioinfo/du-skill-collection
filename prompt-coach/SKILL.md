@@ -80,22 +80,10 @@ session on every call.
 
 ## Wiring the hooks
 
-Unlike a plugin, this skill's hooks are not auto-loaded. To make coaching actually fire,
-wire the two hooks into your Claude Code `settings.json` (point the commands at this
-skill's absolute path). `hooks.json` in this directory is a ready-to-adapt template:
-
-```json
-{
-  "hooks": {
-    "UserPromptSubmit": [
-      { "hooks": [{ "type": "command", "command": "bash \"<SKILL_DIR>/scripts/hook_prompt.sh\"", "timeout": 10 }] }
-    ],
-    "Stop": [
-      { "matcher": "", "hooks": [{ "type": "command", "command": "bash \"<SKILL_DIR>/scripts/hook_stop.sh\"", "timeout": 10 }] }
-    ]
-  }
-}
-```
+Installed as a plugin (`/plugin install prompt-coach@du-skill-collection`) the two hooks in
+`hooks/hooks.json` load automatically. With the symlink install, `install.sh` wires them
+into `settings.json`; to do it by hand, copy `hooks/hooks.json` and replace
+`${CLAUDE_PLUGIN_ROOT}` with this skill's absolute path.
 
 Without the hooks wired, the toggle and summary still run, but no inline `🧭` line appears.
 
