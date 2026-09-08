@@ -1,13 +1,13 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "du-skill-collection",
-  "description": "Niu Du's Claude Code skills — pptx design craft, prompt coaching, and a status-line step chain. Install each one individually.",
+  "description": "Niu Du's Claude Code skills — pptx design craft, prompt coaching, and a step-chain progress ticker. Install each one individually.",
   "owner": { "name": "ndu-bioinfo", "url": "https://github.com/ndu-bioinfo" },
   "plugins": [
     {
       "name": "step-status",
       "source": "./step-status",
-      "description": "Live step chain in the status line for multi-step workflows: init ✓ → loop|detail ● → summary ○. Wraps your existing status line.",
+      "description": "Step-chain progress ticker posted in the conversation during multi-step workflows: init ✓ → loop|detail ● → summary ○. Optional status-line mirror.",
       "category": "productivity"
     },
     {
