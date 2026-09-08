@@ -29,7 +29,8 @@ skills. Read this before making changes. See [README.md](README.md) for user-fac
   right. Don't write speculative skills or generic advice.
 - The repo is also a **plugin marketplace** (`.claude-plugin/marketplace.json`). Every skill
   dir is a single-skill plugin: `SKILL.md` at the plugin root plus
-  `.claude-plugin/plugin.json`; hooks go in `hooks/hooks.json` and reference scripts via
+  `.claude-plugin/plugin.json`; hooks go in `hooks/hooks.json` (auto-loaded — never also
+  list it under `plugin.json` `hooks`, Claude Code rejects the duplicate) and reference scripts via
   `${CLAUDE_PLUGIN_ROOT}` (never absolute paths — plugins are copied into a cache dir on
   install). Plugins cannot set `statusLine`; step-status wires that via
   `scripts/wire_statusline.sh`.
