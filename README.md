@@ -117,7 +117,7 @@ bash ~/.claude/skills/step-status/scripts/steps.sh start loop "check agent statu
 ```
 .claude-plugin/marketplace.json   # marketplace manifest — one plugin entry per skill dir
 <skill-name>/                     # a single-skill plugin: SKILL.md at the plugin root
-  .claude-plugin/plugin.json      # required — plugin manifest (name, version, hooks path)
+  .claude-plugin/plugin.json      # required — plugin manifest (name, version, description)
   SKILL.md                        # required — YAML frontmatter + guidance
   hooks/hooks.json                # optional — plugin hooks, paths via ${CLAUDE_PLUGIN_ROOT}
   references/                     # optional — longer docs the skill pulls in on demand
@@ -152,8 +152,9 @@ non-obvious gotchas that make it worth remembering.
 2. Write the body from real session experience — what tripped you up, what patterns
    worked. Skip generic advice.
 3. Add a row to the Skills table above.
-4. Add `<skill-name>/.claude-plugin/plugin.json` (`name`, `version`, `description`; add
-   `"hooks": "./hooks/hooks.json"` if it ships hooks) and a plugin entry in
+4. Add `<skill-name>/.claude-plugin/plugin.json` (`name`, `version`, `description`; hooks
+   go in `hooks/hooks.json`, which loads automatically — do not also list it in
+   `plugin.json`, that is rejected as a duplicate) and a plugin entry in
    `.claude-plugin/marketplace.json`. Run `claude plugin validate .`.
 5. Commit. `install.sh` picks it up automatically (it discovers any dir with a `SKILL.md`).
 

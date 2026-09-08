@@ -2,6 +2,7 @@
   "name": "prompt-coach",
   "version": "0.1.0",
   "description": "Advisory, session-scoped prompt-quality coaching layer. Ships OFF; enable with /prompt-coach ON.",
-  "author": { "name": "ndu-bioinfo" },
-  "hooks": "./hooks/hooks.json"
+  "author": {
+    "name": "ndu-bioinfo"
+  }
 }
