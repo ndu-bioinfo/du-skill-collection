@@ -1,0 +1,32 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "du-skill-collection",
+  "description": "Niu Du's Claude Code skills — pptx design craft, prompt coaching, and a status-line step chain. Install each one individually.",
+  "owner": { "name": "ndu-bioinfo", "url": "https://github.com/ndu-bioinfo" },
+  "plugins": [
+    {
+      "name": "step-status",
+      "source": "./step-status",
+      "description": "Live step chain in the status line for multi-step workflows: init ✓ → loop|detail ● → summary ○. Wraps your existing status line.",
+      "category": "productivity"
+    },
+    {
+      "name": "prompt-coach",
+      "source": "./prompt-coach",
+      "description": "Advisory, session-scoped prompt-quality coaching: one inline 🧭 tip per turn, off-context worklog, on-demand summaries. Ships OFF.",
+      "category": "productivity"
+    },
+    {
+      "name": "pptx-slide-design",
+      "source": "./pptx-slide-design",
+      "description": "Designing .pptx slides via python-pptx — layout, typography, and composition patterns that read as intentional.",
+      "category": "design"
+    },
+    {
+      "name": "pptx-flowchart-design",
+      "source": "./pptx-flowchart-design",
+      "description": "Building flowcharts in .pptx via python-pptx — layout grid, arrow patterns, and OOXML gotchas that trigger PowerPoint repair prompts.",
+      "category": "design"
+    }
+  ]
+}

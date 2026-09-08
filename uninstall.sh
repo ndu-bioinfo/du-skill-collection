@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Uninstall skills that were installed from this repo (remove the symlinks in
-# ~/.claude/skills/, and, for prompt-coach, unwire its hooks from settings.json).
+# ~/.claude/skills/; for prompt-coach unwire its hooks, for step-status restore the
+# previous statusLine and drop its SessionStart hook in settings.json).
 #
 #   ./uninstall.sh                 # uninstall ALL skills from this repo
 #   ./uninstall.sh prompt-coach    # uninstall specific skill(s)
@@ -31,6 +32,7 @@ if [ ${#NAMES[@]} -eq 0 ]; then
 fi
 
 removed_prompt_coach=0
+removed_step_status=0
 for name in "${NAMES[@]}"; do
   dst="$SKILLS_DIR/$name"
   if [ ! -L "$dst" ]; then
@@ -40,7 +42,8 @@ for name in "${NAMES[@]}"; do
   target="$(readlink "$dst")"
   case "$target" in
     "$REPO/"*) rm -f "$dst"; echo "uninstalled: $name"
-               [ "$name" = "prompt-coach" ] && removed_prompt_coach=1 ;;
+               [ "$name" = "prompt-coach" ] && removed_prompt_coach=1
+               [ "$name" = "step-status" ] && removed_step_status=1 ;;
     *) echo "skip: $dst points to $target (not this repo) — leaving it alone" >&2 ;;
   esac
 done
@@ -48,12 +51,16 @@ done
 # Unwire prompt-coach hooks from settings.json (only entries that reference THIS repo).
 if [ "$removed_prompt_coach" = 1 ] && [ -f "$SETTINGS" ]; then
   REPO="$REPO" SETTINGS="$SETTINGS" python3 - <<'PY'
-import json, os
+import json, os, sys
 settings = os.environ["SETTINGS"]; marker = os.environ["REPO"] + "/prompt-coach/scripts/"
-with open(settings) as f:
-    try: data = json.load(f) or {}
-    except Exception: data = {}
-hooks = data.get("hooks", {})
+data = {}
+if os.path.exists(settings):
+    with open(settings) as f: raw = f.read()
+    if raw.strip():
+        try: data = json.loads(raw)
+        except Exception as e: sys.exit(f"refusing to rewrite {settings}: not valid JSON ({e})")
+if not isinstance(data, dict): sys.exit(f"{settings} is not a JSON object")
+hooks = data.get("hooks") if isinstance(data.get("hooks"), dict) else {}
 removed = 0
 for ev in list(hooks):
     groups = []
@@ -66,11 +73,18 @@ for ev in list(hooks):
     else: del hooks[ev]
 if not hooks:
     data.pop("hooks", None)
-with open(settings, "w") as f:
+tmp = settings + ".tmp"
+with open(tmp, "w") as f:
     json.dump(data, f, indent=2); f.write("\n")
+os.replace(tmp, settings)
 print(f"unwired {removed} prompt-coach hook(s) from " + settings if removed
       else "no prompt-coach hooks found in " + settings)
 PY
+fi
+
+# Unwire step-status: restore the wrapped status line (or drop the standalone one) and its hook.
+if [ "$removed_step_status" = 1 ] && [ -f "$SETTINGS" ]; then
+  CLAUDE_SETTINGS="$SETTINGS" bash "$REPO/step-status/scripts/wire_statusline.sh" --unwire
 fi
 
 echo

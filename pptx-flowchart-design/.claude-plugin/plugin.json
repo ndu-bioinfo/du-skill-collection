@@ -1,0 +1,6 @@
+{
+  "name": "pptx-flowchart-design",
+  "version": "0.1.0",
+  "description": "Flowchart layout and OOXML safety for python-pptx.",
+  "author": { "name": "ndu-bioinfo" }
+}

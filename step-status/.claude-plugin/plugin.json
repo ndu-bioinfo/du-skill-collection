@@ -1,0 +1,7 @@
+{
+  "name": "step-status",
+  "version": "0.1.0",
+  "description": "Live step chain in the status line for multi-step workflows.",
+  "author": { "name": "ndu-bioinfo" },
+  "hooks": "./hooks/hooks.json"
+}

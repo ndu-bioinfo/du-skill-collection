@@ -1,0 +1,6 @@
+{
+  "name": "pptx-slide-design",
+  "version": "0.1.0",
+  "description": "Slide design craft for python-pptx decks.",
+  "author": { "name": "ndu-bioinfo" }
+}
