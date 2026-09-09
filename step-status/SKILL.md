@@ -103,7 +103,9 @@ init ✓ → loop|check agent status ● → summary ○
 
 Every mutating `steps.sh` command echoes that line; quote it verbatim. Keep it to the chain
 alone — no preamble — so the messages read as a ticker. A `SessionStart` hook clears any
-chain left in the cwd from a previous session.
+chain left in the cwd from a previous session. A `UserPromptSubmit` hook injects the current
+chain (or a nudge to `set` one) into every turn, so the ticker does not depend on Claude
+remembering this skill exists.
 
 ## Optional: mirror the chain in the status line (`/step-status setup`)
 

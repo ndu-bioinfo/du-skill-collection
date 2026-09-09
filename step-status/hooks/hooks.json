@@ -2,6 +2,9 @@
   "hooks": {
     "SessionStart": [
       { "matcher": "startup|clear", "hooks": [ { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/hook_session_start.sh\"", "timeout": 10 } ] }
+    ],
+    "UserPromptSubmit": [
+      { "hooks": [ { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/hook_prompt.sh\"", "timeout": 10 } ] }
     ]
   }
 }
