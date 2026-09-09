@@ -10,7 +10,7 @@ directory with a `SKILL.md` that Claude loads when its trigger conditions match.
 |-------|--------------|
 | [pptx-flowchart-design](pptx-flowchart-design/SKILL.md) | Building flowcharts in `.pptx` via python-pptx — layout grid, arrow patterns, OOXML gotchas that cause PowerPoint "repair" prompts, and safe editing. |
 | [pptx-slide-design](pptx-slide-design/SKILL.md) | Designing `.pptx` slides via python-pptx — layout, typography, and composition patterns that read as intentional rather than auto-generated. |
-| [step-status](step-status/SKILL.md) | A live step chain in the status line for multi-step workflows: `init ✓ → loop\|check agent status ● → summary ○`. Claude updates it via a tiny CLI; `install.sh` wraps your existing status line (e.g. ccstatusline) or runs standalone. |
+| [step-status](step-status/SKILL.md) | A step-chain progress ticker Claude posts in the conversation at each phase of a multi-step workflow: `init ✓ → loop\|check agent status ● → summary ○`. Named chains let you park and resume several workflows per directory. Optional status-line mirror. |
 | [prompt-coach](prompt-coach/SKILL.md) | An advisory, session-scoped prompt-quality coaching layer. Surfaces one inline `🧭 coach:` tip per turn, keeps an off-context worklog, and produces on-demand session summaries. Hooks-based; ships **OFF**. |
 
 ## Quick start (plugin marketplace)
@@ -26,8 +26,8 @@ pick and install individual ones:
 /plugin install pptx-flowchart-design@du-skill-collection
 ```
 
-Hooks (prompt-coach, step-status) ship inside the plugins. The only manual step is the
-status line for step-status, which plugins can't set: run `/step-status setup` once.
+Hooks (prompt-coach, step-status) ship inside the plugins. step-status needs no setup;
+run `/step-status setup` only if you also want the chain mirrored in your status line.
 Update everything later with `/plugin marketplace update du-skill-collection`.
 
 ## Alternative: symlink install
@@ -91,26 +91,27 @@ Then enable it per session (it ships OFF and is session-scoped):
 repo, leaving the rest of your `settings.json` intact. To wire the hooks by hand
 instead, see [`prompt-coach/hooks/hooks.json`](prompt-coach/hooks/hooks.json).
 
-## step-status status line
+## step-status
 
-step-status shows workflow progress in the Claude Code **status line**. `install.sh`
-auto-detects your setup: if `settings.json` already has a `statusLine` command (e.g.
-`npx -y ccstatusline@latest`) it is wrapped and the step chain is appended as an extra
-line; if there is none, the chain becomes the status line. It also adds a `SessionStart`
-hook that clears stale chains. `uninstall.sh step-status` restores the previous status
-line exactly. The wiring script never rewrites a `settings.json` it cannot parse. Plugin
-installs live in a versioned cache dir, so the scripts are copied to
-`~/.claude/step-status/bin`; re-run `/step-status setup` after a plugin update. Installed as a plugin, run `/step-status setup` once (calls
-`step-status/scripts/wire_statusline.sh`); hook manifest: [`step-status/hooks/hooks.json`](step-status/hooks/hooks.json).
-
-Claude drives it from any multi-step skill:
+step-status reports workflow progress as a one-line chain **in the conversation**: Claude
+records each phase transition with a tiny CLI and quotes the echoed chain in its reply.
+Chains are named, so several workflows can be parked and resumed per directory
+(`use`, `list`, `note`). A `SessionStart` hook clears stale chains.
 
 ```bash
-bash ~/.claude/skills/step-status/scripts/steps.sh set init loop summary
-bash ~/.claude/skills/step-status/scripts/steps.sh done init
-bash ~/.claude/skills/step-status/scripts/steps.sh start loop "check agent status"
-# status line: init ✓ → loop|check agent status ● → summary ○
+STEPS=~/.claude/plugins/cache/du-skill-collection/step-status/*/scripts/steps.sh
+bash $STEPS set init loop summary          # → init ● → loop ○ → summary ○
+bash $STEPS done init                      # → init ✓ → loop ● → summary ○
+bash $STEPS start loop "check agent status"
+bash $STEPS use pr-42; bash $STEPS note "flaky auth test"; bash $STEPS list
 ```
+
+Optional status-line mirror: `/step-status setup` (or `./install.sh step-status`) wraps an
+existing `statusLine` command such as ccstatusline, or installs standalone;
+`uninstall.sh step-status` / `wire_statusline.sh --unwire` restores it exactly. The wiring
+script never rewrites a `settings.json` it cannot parse. Plugin installs live in a
+versioned cache dir, so the scripts are copied to `~/.claude/step-status/bin`; re-run setup
+after a plugin update. Hook manifest: [`step-status/hooks/hooks.json`](step-status/hooks/hooks.json).
 
 ## Layout
 

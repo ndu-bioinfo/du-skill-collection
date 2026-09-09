@@ -7,5 +7,6 @@ INPUT="$(cat 2>/dev/null || true)"
 CWD="$(STEP_INPUT="$INPUT" python3 -c 'import json,os
 try: print(json.loads(os.environ["STEP_INPUT"] or "{}").get("cwd") or "")
 except Exception: print("")' 2>/dev/null || true)"
-[[ -n "$CWD" && ! -L "$CWD/.step-status/state" ]] && rm -f "$CWD/.step-status/state"
+[[ -n "$CWD" && -d "$CWD/.step-status" && ! -L "$CWD/.step-status" ]] &&
+  find "$CWD/.step-status" -maxdepth 1 -type f \( -name '*.state' -o -name '*.note' -o -name current \) -delete 2>/dev/null
 exit 0

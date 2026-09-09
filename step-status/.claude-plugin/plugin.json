@@ -1,7 +1,7 @@
 {
   "name": "step-status",
-  "version": "0.1.0",
-  "description": "Live step chain in the status line for multi-step workflows.",
+  "version": "0.2.0",
+  "description": "Step-chain progress ticker posted in the conversation during multi-step workflows.",
   "author": {
     "name": "ndu-bioinfo"
   }
