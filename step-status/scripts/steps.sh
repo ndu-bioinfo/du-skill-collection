@@ -54,12 +54,11 @@ render_file() {
   done < "$1"
   [[ -n "$out" ]] && printf '%s\n' "$out" | tr -d '\000-\010\013-\037\177'
 }
-# Current chain; prefixed with [name] when it is not the default one.
+# Current chain, always prefixed with its [name] so every ticker line says which chain it is.
 render() {
   safe_state || return 0
   local line; line="$(render_file "$STATE")"
-  [[ -z "$line" ]] && return 0
-  [[ "$CHAIN" == default ]] && printf '%s\n' "$line" || printf '[%s] %s\n' "$CHAIN" "$line"
+  [[ -n "$line" ]] && printf '[%s] %s\n' "$CHAIN" "$line"
 }
 
 use_chain() {
@@ -67,7 +66,7 @@ use_chain() {
   ensure_dir || return 1
   printf '%s\n' "$1" > "$DIR/current"
   local line; line="$(render_file "$DIR/$1.state")"
-  echo "chain: $1${line:+ — $line}${line:- (empty — run 'set')}"
+  printf '[%s] %s\n' "$1" "${line:-(empty — run 'set')}"
 }
 
 list_chains() {
@@ -77,7 +76,7 @@ list_chains() {
     [[ -f "$f" ]] || continue
     n="$(basename "$f" .state)"; mark=" "; [[ "$n" == "$CHAIN" ]] && mark="*"
     note=""; [[ -f "$DIR/$n.note" && ! -L "$DIR/$n.note" ]] && note="$(head -n1 "$DIR/$n.note" | tr -d '\000-\037\177')"
-    printf '%s %s: %s%s\n' "$mark" "$n" "$(render_file "$f")" "${note:+  # $note}"
+    printf '%s [%s] %s%s\n' "$mark" "$n" "$(render_file "$f")" "${note:+  # $note}"
   done
 }
 
@@ -149,15 +148,15 @@ selfcheck() {
   r() { bash "$s" render; }
   fail() { echo "FAIL $1: $(r)"; exit 1; }
   bash "$s" set init loop summary
-  [[ "$(r)" == "init ● → loop ○ → summary ○" ]] || fail set
+  [[ "$(r)" == "[default] init ● → loop ○ → summary ○" ]] || fail set
   bash "$s" done init; bash "$s" start loop "check agent status"
-  [[ "$(r)" == "init ✓ → loop|check agent status ● → summary ○" ]] || fail start
+  [[ "$(r)" == "[default] init ✓ → loop|check agent status ● → summary ○" ]] || fail start
   bash "$s" done loop
-  [[ "$(r)" == "init ✓ → loop ✓ → summary ●" ]] || fail auto-next
+  [[ "$(r)" == "[default] init ✓ → loop ✓ → summary ●" ]] || fail auto-next
   bash "$s" fail summary
-  [[ "$(r)" == "init ✓ → loop ✓ → summary ✗" ]] || fail fail
+  [[ "$(r)" == "[default] init ✓ → loop ✓ → summary ✗" ]] || fail fail
   bash "$s" set a b c; bash "$s" start b; bash "$s" done a
-  [[ "$(r)" == "a ✓ → b ● → c ○" ]] || fail out-of-order
+  [[ "$(r)" == "[default] a ✓ → b ● → c ○" ]] || fail out-of-order
   bash "$s" set a a b 2>/dev/null && fail duplicate-accepted
   bash "$s" set $'a\tb' 2>/dev/null && fail tab-name-accepted
   bash "$s" set "" b 2>/dev/null && fail empty-name-accepted
@@ -165,7 +164,7 @@ selfcheck() {
   bash "$s" done zzz 2>/dev/null && fail unknown-step-accepted
   bash "$s" --bogus 2>/dev/null && fail unknown-cmd-accepted
   bash "$s" clear; [[ -z "$(r)" ]] || fail clear
-  printf 'active\tx\e[31mred\t\n' > "$d/default.state"; [[ "$(r)" == "x[31mred ●" ]] || fail control-chars
+  printf 'active\tx\e[31mred\t\n' > "$d/default.state"; [[ "$(r)" == "[default] x[31mred ●" ]] || fail control-chars
   ln -sfn /dev/null "$d/default.state"; bash "$s" set p 2>/dev/null && fail symlink-followed
   rm -f "$d/default.state"
   # named chains: switch, keep both, notes, list, clear only the current one
@@ -173,16 +172,16 @@ selfcheck() {
   bash "$s" note "reviewing PR 42"
   [[ "$(r)" == "[pr] x ✓ → y ● → z ○" ]] || fail named-render
   [[ "$(bash "$s" note)" == "reviewing PR 42" ]] || fail note-read
-  bash "$s" use default >/dev/null; [[ "$(r)" == "a ● → b ○" ]] || fail switch-back
-  [[ "$(bash "$s" list)" == $'* default: a ● → b ○\n  pr: x ✓ → y ● → z ○  # reviewing PR 42' ]] || fail "list: $(bash "$s" list)"
+  [[ "$(bash "$s" use default)" == "[default] a ● → b ○" ]] || fail switch-back
+  [[ "$(bash "$s" list)" == $'* [default] a ● → b ○\n  [pr] x ✓ → y ● → z ○  # reviewing PR 42' ]] || fail "list: $(bash "$s" list)"
   bash "$s" use pr >/dev/null; bash "$s" clear; [[ -z "$(r)" && ! -e "$d/pr.note" ]] || fail named-clear
   [[ -f "$d/default.state" ]] || fail clear-scoped
   bash "$s" use ../evil 2>/dev/null && fail bad-chain-name
   # inter-session comms land on the active step
   bash "$s" use default >/dev/null; bash "$s" set ask wait >/dev/null; bash "$s" msg sent RCM-info "need diagnostics" >/dev/null
-  [[ "$(r)" == "ask|⇢ RCM-info: need diagnostics ● → wait ○" ]] || fail "msg-sent: $(r)"
+  [[ "$(r)" == "[default] ask|⇢ RCM-info: need diagnostics ● → wait ○" ]] || fail "msg-sent: $(r)"
   bash "$s" done ask >/dev/null; bash "$s" msg recv RCM-info >/dev/null
-  [[ "$(r)" == "ask ✓ → wait|⇠ RCM-info ●" ]] || fail "msg-recv: $(r)"
+  [[ "$(r)" == "[default] ask ✓ → wait|⇠ RCM-info ●" ]] || fail "msg-recv: $(r)"
   bash "$s" msg bogus x 2>/dev/null && fail msg-bad-direction
   bash "$s" clear
   [[ "$(cat "$d/.gitignore")" == "*" ]] || fail gitignore

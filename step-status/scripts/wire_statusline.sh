@@ -49,7 +49,7 @@ selfcheck() {
   export STEP_STATUS_DIR="$d/proj/.step-status"; mkdir -p "$d/proj"
   bash "$HERE/steps.sh" set a b >/dev/null
   out="$(printf '{"workspace":{"current_dir":"%s"}}' "$d/proj" | bash "$HERE/statusline.sh" -- 'printf abc')"
-  [[ "$out" == $'abc\na ● → b ○' ]] || fail "wrapped output: $out"
+  [[ "$out" == $'abc\n[default] a ● → b ○' ]] || fail "wrapped output: $out"
   [[ -z "$(echo '{}' | bash "$HERE/statusline.sh")" ]] || fail "no-cwd should print nothing"
   rm -rf "$d"; echo "selfcheck OK"
 }
