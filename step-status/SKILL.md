@@ -66,15 +66,16 @@ reply is handled, `done` the step as usual (or `start <step> "<detail>"` to over
 
 ### Named chains (several workflows in one session)
 
-Every chain has a name; the status line shows the *current* one. Without `use`, the name
-is `default` and nothing is prefixed. Give a chain a name when the user is likely to come
-back to it after doing something else (a PR review, a migration, an investigation):
+Every chain has a name and every rendered line starts with it in brackets, so the user can
+always tell which workflow a ticker line belongs to. Without `use`, the name is `default`
+(`[default] init ● → …`). Give a chain a real name when the user is likely to come back to
+it after doing something else (a PR review, a migration, an investigation):
 
 ```bash
 STEPS use pr-42                          # switch to (or create) chain "pr-42"; renders as [pr-42] …
 STEPS set triage fix verify              # chains are independent — set/done/clear act on the current one
 STEPS note "PR 42: flaky test in auth"   # one-line context so you can pick the thread up later
-STEPS list                               # * marks current:  * pr-42: triage ✓ → fix ● → verify ○  # PR 42: …
+STEPS list                               # * marks current:  * [pr-42] triage ✓ → fix ● → verify ○  # PR 42: …
 STEPS use default                        # switch back; pr-42 keeps its state
 ```
 
@@ -98,7 +99,7 @@ Rules:
 One short line from you at each transition, e.g.
 
 ```
-init ✓ → loop|check agent status ● → summary ○
+[default] init ✓ → loop|check agent status ● → summary ○
 ```
 
 Every mutating `steps.sh` command echoes that line; quote it verbatim. Keep it to the chain

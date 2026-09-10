@@ -100,8 +100,8 @@ Chains are named, so several workflows can be parked and resumed per directory
 
 ```bash
 STEPS=~/.claude/plugins/cache/du-skill-collection/step-status/*/scripts/steps.sh
-bash $STEPS set init loop summary          # → init ● → loop ○ → summary ○
-bash $STEPS done init                      # → init ✓ → loop ● → summary ○
+bash $STEPS set init loop summary          # → [default] init ● → loop ○ → summary ○
+bash $STEPS done init                      # → [default] init ✓ → loop ● → summary ○
 bash $STEPS start loop "check agent status"
 bash $STEPS use pr-42; bash $STEPS note "flaky auth test"; bash $STEPS list
 ```
