@@ -31,11 +31,12 @@ base directory of this skill when loaded; installed as a plugin it is
 via the Bash tool from the project root — state lives in `./.step-status/state`
 (self-ignoring, keyed by cwd).
 
-1. **At the start** of a multi-step workflow, define the chain once. The first step
-   becomes active:
+1. **At the start** of a multi-step workflow, define the chain once, naming it for the
+   task (short, kebab-case — `fix-auth`, `release-2.4`). The first step becomes active:
    ```bash
-   STEPS set init loop summary
+   STEPS set --name fix-auth init loop summary     # → [fix-auth] init ● → loop ○ → summary ○
    ```
+   Plain `STEPS set init loop summary` also works and lands on the chain called `default`.
 2. **On each transition**, run the command and **post the line it echoes in your reply**,
    on its own line, before continuing — that message *is* the progress indicator. The
    user may not see tool output, so a transition you do not quote is invisible.
@@ -72,8 +73,9 @@ always tell which workflow a ticker line belongs to. Without `use`, the name is 
 it after doing something else (a PR review, a migration, an investigation):
 
 ```bash
-STEPS use pr-42                          # switch to (or create) chain "pr-42"; renders as [pr-42] …
-STEPS set triage fix verify              # chains are independent — set/done/clear act on the current one
+STEPS set --name pr-42 triage fix verify # create + name in one go; renders as [pr-42] …
+STEPS use pr-42                          # later: switch back to it (chains are independent —
+                                         # set/done/clear act on the current one)
 STEPS note "PR 42: flaky test in auth"   # one-line context so you can pick the thread up later
 STEPS list                               # * marks current:  * [pr-42] triage ✓ → fix ● → verify ○  # PR 42: …
 STEPS use default                        # switch back; pr-42 keeps its state
