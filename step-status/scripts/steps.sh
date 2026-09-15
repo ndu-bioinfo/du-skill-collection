@@ -2,7 +2,8 @@
 # step-status CLI — record where a multi-step workflow is, so the status line can
 # render a chain like:  init ✓ → loop|check agent status ● → summary ○
 #
-#   steps.sh set <name>...            define the chain; first step becomes active
+#   steps.sh set [--name CHAIN] <step>...   define the chain (optionally naming it in one go);
+#                                     first step becomes active
 #   steps.sh start <name> [detail]    mark a step in progress (detail shows as name|detail)
 #   steps.sh done <name>              mark done; activates the next planned step if none is active
 #   steps.sh fail <name>              mark failed
@@ -61,12 +62,16 @@ render() {
   [[ -n "$line" ]] && printf '[%s] %s\n' "$CHAIN" "$line"
 }
 
-use_chain() {
+switch_chain() {
   valid_chain "$1" || return 2
   ensure_dir || return 1
   printf '%s\n' "$1" > "$DIR/current"
-  local line; line="$(render_file "$DIR/$1.state")"
-  printf '[%s] %s\n' "$1" "${line:-(empty — run 'set')}"
+  CHAIN="$1"; STATE="$DIR/$CHAIN.state"; NOTE="$DIR/$CHAIN.note"
+}
+use_chain() {
+  switch_chain "$1" || return $?
+  local line; line="$(render_file "$STATE")"
+  printf '[%s] %s\n' "$CHAIN" "${line:-(empty — run 'set')}"
 }
 
 list_chains() {
@@ -177,6 +182,9 @@ selfcheck() {
   bash "$s" use pr >/dev/null; bash "$s" clear; [[ -z "$(r)" && ! -e "$d/pr.note" ]] || fail named-clear
   [[ -f "$d/default.state" ]] || fail clear-scoped
   bash "$s" use ../evil 2>/dev/null && fail bad-chain-name
+  bash "$s" set --name build compile test >/dev/null
+  [[ "$(r)" == "[build] compile ● → test ○" ]] || fail "named-set: $(r)"
+  bash "$s" set --name '../evil' x 2>/dev/null && fail named-set-bad-name
   # inter-session comms land on the active step
   bash "$s" use default >/dev/null; bash "$s" set ask wait >/dev/null; bash "$s" msg sent RCM-info "need diagnostics" >/dev/null
   [[ "$(r)" == "[default] ask|⇢ RCM-info: need diagnostics ● → wait ○" ]] || fail "msg-sent: $(r)"
@@ -191,7 +199,10 @@ selfcheck() {
 main() {
   local cmd="${1:-render}"; shift || true
   case "$cmd" in
-    set)   set_chain "$@" && render ;;
+    set)   if [[ "${1-}" == --name || "${1-}" == -n ]]; then
+             need_name "${2-}" "set --name" && switch_chain "$2" || return $?; shift 2
+           fi
+           set_chain "$@" && render ;;
     start) need_name "${1-}" start && valid_name "${2-x}" && update "$1" active "${2-}" && render ;;
     done)  need_name "${1-}" done && update "$1" done && render ;;
     fail)  need_name "${1-}" fail && update "$1" failed && render ;;
