@@ -10,7 +10,7 @@ directory with a `SKILL.md` that Claude loads when its trigger conditions match.
 |-------|--------------|
 | [pptx-flowchart-design](pptx-flowchart-design/SKILL.md) | Building flowcharts in `.pptx` via python-pptx — layout grid, arrow patterns, OOXML gotchas that cause PowerPoint "repair" prompts, and safe editing. |
 | [pptx-slide-design](pptx-slide-design/SKILL.md) | Designing `.pptx` slides via python-pptx — layout, typography, and composition patterns that read as intentional rather than auto-generated. |
-| [step-status](step-status/SKILL.md) | A step-chain progress ticker Claude posts in the conversation at each phase of a multi-step workflow: `init ✓ → loop\|check agent status ● → summary ○`. Named chains let you park and resume several workflows per directory. Optional status-line mirror. |
+| [workflow-tracker](workflow-tracker/SKILL.md) | A step-chain progress ticker Claude posts in the conversation at each phase of a multi-step workflow: `init ✓ → loop\|check agent status ● → summary ○`. Named chains let you park and resume several workflows per directory. Optional status-line mirror. |
 | [prompt-coach](prompt-coach/SKILL.md) | An advisory, session-scoped prompt-quality coaching layer. Surfaces one inline `🧭 coach:` tip per turn, keeps an off-context worklog, and produces on-demand session summaries. Hooks-based; ships **OFF**. |
 
 ## Quick start (plugin marketplace)
@@ -20,14 +20,14 @@ pick and install individual ones:
 
 ```
 /plugin marketplace add ndu-bioinfo/du-skill-collection
-/plugin install step-status@du-skill-collection
+/plugin install workflow-tracker@du-skill-collection
 /plugin install prompt-coach@du-skill-collection
 /plugin install pptx-slide-design@du-skill-collection
 /plugin install pptx-flowchart-design@du-skill-collection
 ```
 
-Hooks (prompt-coach, step-status) ship inside the plugins. step-status needs no setup;
-run `/step-status setup` only if you also want the chain mirrored in your status line.
+Hooks (prompt-coach, workflow-tracker) ship inside the plugins. workflow-tracker needs no setup;
+run `/workflow-tracker setup` only if you also want the chain mirrored in your status line.
 Update everything later with `/plugin marketplace update du-skill-collection`.
 
 ## Alternative: symlink install
@@ -42,8 +42,8 @@ cd du-skill-collection
 
 Restart Claude Code (or open a new session) and the skills are available. This
 also wires prompt-coach's hooks into your `settings.json` automatically. (Pass
-`--no-hooks` to skip that.) step-status's status line is wired only when you ask for it
-by name, because it replaces `statusLine`: `./install.sh step-status`.
+`--no-hooks` to skip that.) workflow-tracker's status line is wired only when you ask for it
+by name, because it replaces `statusLine`: `./install.sh workflow-tracker`.
 
 ## Install / uninstall
 
@@ -53,10 +53,10 @@ by name, because it replaces `statusLine`: `./install.sh step-status`.
 ```bash
 ./install.sh                      # install ALL skills
 ./install.sh prompt-coach         # install one
-./install.sh step-status          # install + wrap your status line with the step chain
+./install.sh workflow-tracker     # install + wrap your status line with the step chain
 ./install.sh pptx-slide-design pptx-flowchart-design   # install several
 ./install.sh --list               # list available skills
-./install.sh --no-hooks           # install without wiring hooks / status line (prompt-coach, step-status)
+./install.sh --no-hooks           # install without wiring hooks / status line (prompt-coach, workflow-tracker)
 
 ./uninstall.sh                    # remove ALL skills installed from this repo
 ./uninstall.sh prompt-coach       # remove one
@@ -91,27 +91,34 @@ Then enable it per session (it ships OFF and is session-scoped):
 repo, leaving the rest of your `settings.json` intact. To wire the hooks by hand
 instead, see [`prompt-coach/hooks/hooks.json`](prompt-coach/hooks/hooks.json).
 
-## step-status
+## workflow-tracker
 
-step-status reports workflow progress as a one-line chain **in the conversation**: Claude
+workflow-tracker reports workflow progress as a one-line chain **in the conversation**: Claude
 records each phase transition with a tiny CLI and quotes the echoed chain in its reply.
 Chains are named, so several workflows can be parked and resumed per directory
-(`use`, `list`, `note`). A `SessionStart` hook clears stale chains.
+(`use`, `list`, `note`); looping workflows bracket their repeating steps with a `↻N` pass
+counter (`cycle`). A `SessionStart` hook clears stale chains.
 
 ```bash
-STEPS=~/.claude/plugins/cache/du-skill-collection/step-status/*/scripts/steps.sh
-bash $STEPS set init loop summary          # → [default] init ● → loop ○ → summary ○
-bash $STEPS done init                      # → [default] init ✓ → loop ● → summary ○
+STEPS=~/.claude/plugins/cache/du-skill-collection/workflow-tracker/*/scripts/steps.sh
+bash $STEPS set --name fix-auth init loop summary   # → [fix-auth] init ● → loop ○ → summary ○
+bash $STEPS done init                               # → [fix-auth] init ✓ → loop ● → summary ○
+bash $STEPS cycle loop                              # → [fix-auth] init ✓ → [loop ● ↻2] → summary ○
 bash $STEPS start loop "check agent status"
 bash $STEPS use pr-42; bash $STEPS note "flaky auth test"; bash $STEPS list
 ```
 
-Optional status-line mirror: `/step-status setup` (or `./install.sh step-status`) wraps an
+Upgrading from the old name: `/plugin uninstall step-status@du-skill-collection` before
+installing workflow-tracker (both active = duplicate hooks). Symlink installs migrate on their
+own: `./uninstall.sh` drops the old `step-status` link and the status-line wiring script rewrites
+old `step-status/scripts/` paths in `settings.json`.
+
+Optional status-line mirror: `/workflow-tracker setup` (or `./install.sh workflow-tracker`) wraps an
 existing `statusLine` command such as ccstatusline, or installs standalone;
-`uninstall.sh step-status` / `wire_statusline.sh --unwire` restores it exactly. The wiring
+`uninstall.sh workflow-tracker` / `wire_statusline.sh --unwire` restores it exactly. The wiring
 script never rewrites a `settings.json` it cannot parse. Plugin installs live in a
 versioned cache dir, so the scripts are copied to `~/.claude/step-status/bin`; re-run setup
-after a plugin update. Hook manifest: [`step-status/hooks/hooks.json`](step-status/hooks/hooks.json).
+after a plugin update. Hook manifest: [`workflow-tracker/hooks/hooks.json`](workflow-tracker/hooks/hooks.json).
 
 ## Layout
 
