@@ -79,9 +79,9 @@ render() {
 
 # read_cycle — for a looping chain, echo "<body-first>\t<body-last>\t<count>" (first/last body
 # step in chain order); nothing if the chain isn't looping. The ↻ segment lives inside the chain.
-read_cycle() {
-  local cf="$DIR/$CHAIN.cycle" cnt body
-  [[ -f "$STATE" && -f "$cf" && ! -L "$cf" ]] || return 0
+read_cycle() {                       # read_cycle [chain] — defaults to the current chain
+  local c="${1:-$CHAIN}" cf="$DIR/${1:-$CHAIN}.cycle" sf="$DIR/${1:-$CHAIN}.state" cnt body
+  [[ -f "$sf" && -f "$cf" && ! -L "$cf" ]] || return 0
   { IFS= read -r cnt; IFS= read -r body; } < "$cf"
   cnt="${cnt//[^0-9]/}"; cnt="${cnt:0:6}"; [[ -n "$cnt" ]] || return 0   # repo-controlled: strip + cap so junk can't overflow
   local -a bodyarr=(); IFS=$'\t' read -r -a bodyarr <<<"$body"
@@ -90,7 +90,7 @@ read_cycle() {
   while IFS=$'\t' read -r st name detail; do
     [[ -z "$name" ]] && continue
     in_list "$name" "${bodyarr[@]}" && { [[ -z "$bf" ]] && bf="$name"; bl="$name"; }
-  done < "$STATE"
+  done < "$sf"
   [[ -n "$bf" ]] && printf '%s\t%s\t%s\n' "$bf" "$bl" "$cnt"
 }
 
@@ -118,7 +118,8 @@ list_chains() {
     valid_chain "$n" 2>/dev/null || continue   # skip foreign *.state names (never ours; may carry control bytes)
     mark=" "; [[ "$n" == "$CHAIN" ]] && mark="*"
     note=""; [[ -f "$DIR/$n.note" && ! -L "$DIR/$n.note" ]] && note="$(head -n1 "$DIR/$n.note" | tr -d '\000-\037\177')"
-    printf '%s [%s] %s%s\n' "$mark" "$n" "$(render_file "$f")" "${note:+  # $note}"
+    local bf="" bl="" cnt=""; IFS=$'\t' read -r bf bl cnt <<<"$(read_cycle "$n")"
+    printf '%s [%s] %s%s\n' "$mark" "$n" "$(render_file "$f" "$bf" "$bl" "$cnt")" "${note:+  # $note}"
   done
 }
 
@@ -210,7 +211,7 @@ cycle_chain() {
   done
   local cnt=1
   [[ -f "$cf" && ! -L "$cf" ]] && { IFS= read -r x < "$cf"; x="${x//[^0-9]/}"; x="${x:0:6}"; cnt="${x:-1}"; }
-  cnt=$((10#$cnt+1))   # 10#: a hand-edited "08" is not octal
+  cnt=$((10#$cnt+1)); cnt="${cnt:0:6}"   # 10#: a hand-edited "08" is not octal; cap matches read_cycle
   local first=""                                                       # first body step in chain order → active
   for name in "${names[@]}"; do in_list "$name" "${body[@]}" && { first="$name"; break; }; done
   { while IFS=$'\t' read -r st name detail; do
@@ -322,6 +323,7 @@ selfcheck() {
   bash "$s" done fetch >/dev/null                                    # single-step loop body
   bash "$s" cycle check >/dev/null; [[ -f "$d/loop.cycle" ]] || fail cycle-file
   [[ "$(r)" == "[loop] fetch ✓ → [check ● ↻2] → report ○" ]] || fail "cycle-single: $(r)"
+  [[ "$(bash "$s" list)" == *"[check ● ↻2]"* ]] || fail "list-shows-loop: $(bash "$s" list)"
   bash "$s" clear; [[ ! -e "$d/loop.cycle" ]] || fail cycle-clear
   bash "$s" use default >/dev/null
   # a symlinked state DIR is refused by clear/list too (clear would rm through it)
