@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
-# step-status CLI — record where a multi-step workflow is, so the status line can
+# workflow-tracker CLI — record where a multi-step workflow is, so the status line can
 # render a chain like:  init ✓ → loop|check agent status ● → summary ○
 #
-#   steps.sh set [--name CHAIN] <step>...   define the chain (optionally naming it in one go);
-#                                     first step becomes active
+#   steps.sh set [--name CHAIN] <step>...  define the chain; first step active. --name/-n
+#                                     names the ticker (the [bracket] label); default: "default"
 #   steps.sh start <name> [detail]    mark a step in progress (detail shows as name|detail)
 #   steps.sh done <name>              mark done; activates the next planned step if none is active
 #   steps.sh fail <name>              mark failed
+#   steps.sh cycle <step>...          loops: re-arm a segment (the named steps) for its next
+#                                     pass; brackets them as [ … ↻N]. No args reuses the last body
 #   steps.sh msg sent|recv <session> [text]   note a cross-session message on the active step
 #                                     (detail becomes "⇢ session: text" / "⇠ session: text")
 #   steps.sh render                   print the current chain (nothing if no chain)
@@ -24,6 +26,9 @@ set -uo pipefail
 
 DIR="${STEP_STATUS_DIR:-$PWD/.step-status}"
 CHAIN="$( [[ -f "$DIR/current" && ! -L "$DIR/current" ]] && head -c 200 "$DIR/current" | tr -d '\n' )"
+# `current` is repo-controlled: enforce the same charset as valid_chain() so a hostile
+# current file can't traverse out of $DIR (e.g. ../../foo) via $DIR/$CHAIN.state.
+[[ "$CHAIN" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]] || CHAIN=default
 CHAIN="${CHAIN:-default}"
 STATE="$DIR/$CHAIN.state"
 NOTE="$DIR/$CHAIN.note"
@@ -43,31 +48,60 @@ valid_chain() {
   [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]] || { echo "steps.sh: invalid chain name '$1' (letters, digits, . _ -)" >&2; return 2; }
 }
 
-# render_file <state-file> — one line, or nothing if the file is missing/empty.
+# bash 3.2-safe membership test (macOS ships bash 3.2 — no namerefs/assoc arrays).
+in_list() { local n="$1"; shift; local x; for x in "$@"; do [[ "$x" == "$n" ]] && return 0; done; return 1; }
+
+# render_file <state-file> [body-first] [body-last] [count] — one line, or nothing if empty.
+# When a loop body is given, the contiguous run from body-first to body-last is wrapped
+# `[ … ↻count]` so a loop segment reads apart from one-shot steps around it.
 render_file() {
-  [[ -f "$1" && ! -L "$1" ]] || return 0
-  local out="" st name detail
+  local file="$1" bfirst="${2-}" blast="${3-}" cnt="${4-}"
+  [[ -f "$file" && ! -L "$file" ]] || return 0
+  local out="" st name detail seg
   while IFS=$'\t' read -r st name detail; do
     [[ -z "$name" ]] && continue
     [[ -n "$out" ]] && out+=" → "
-    out+="$name"; [[ -n "$detail" ]] && out+="|$detail"
-    out+=" $(sym "$st")"
-  done < "$1"
+    [[ -n "$bfirst" && "$name" == "$bfirst" ]] && out+="["
+    seg="$name"; [[ -n "$detail" ]] && seg+="|$detail"; seg+=" $(sym "$st")"
+    out+="$seg"
+    [[ -n "$blast" && "$name" == "$blast" ]] && out+=" ↻$cnt]"
+  done < "$file"
   [[ -n "$out" ]] && printf '%s\n' "$out" | tr -d '\000-\010\013-\037\177'
 }
 # Current chain, always prefixed with its [name] so every ticker line says which chain it is.
 render() {
   safe_state || return 0
-  local line; line="$(render_file "$STATE")"
+  local bf="" bl="" cnt="" info; info="$(read_cycle)"
+  IFS=$'\t' read -r bf bl cnt <<<"$info"
+  local line; line="$(render_file "$STATE" "$bf" "$bl" "$cnt")"
   [[ -n "$line" ]] && printf '[%s] %s\n' "$CHAIN" "$line"
 }
 
+# read_cycle — for a looping chain, echo "<body-first>\t<body-last>\t<count>" (first/last body
+# step in chain order); nothing if the chain isn't looping. The ↻ segment lives inside the chain.
+read_cycle() {
+  local cf="$DIR/$CHAIN.cycle" cnt body
+  [[ -f "$cf" && ! -L "$cf" ]] || return 0
+  { IFS= read -r cnt; IFS= read -r body; } < "$cf"
+  cnt="${cnt//[^0-9]/}"; [[ -n "$cnt" ]] || return 0
+  local -a bodyarr=(); IFS=$'\t' read -r -a bodyarr <<<"$body"
+  [[ ${#bodyarr[@]} -ge 1 ]] || return 0
+  local st name detail bf="" bl=""
+  while IFS=$'\t' read -r st name detail; do
+    [[ -z "$name" ]] && continue
+    in_list "$name" "${bodyarr[@]}" && { [[ -z "$bf" ]] && bf="$name"; bl="$name"; }
+  done < "$STATE"
+  [[ -n "$bf" ]] && printf '%s\t%s\t%s\n' "$bf" "$bl" "$cnt"
+}
+
+# Point `current` at a chain and repoint the STATE/NOTE globals at it.
 switch_chain() {
   valid_chain "$1" || return 2
   ensure_dir || return 1
-  printf '%s\n' "$1" > "$DIR/current"
+  printf '%s\n' "$1" | atomic_write "$DIR/current"
   CHAIN="$1"; STATE="$DIR/$CHAIN.state"; NOTE="$DIR/$CHAIN.note"
 }
+
 use_chain() {
   switch_chain "$1" || return $?
   local line; line="$(render_file "$STATE")"
@@ -79,7 +113,9 @@ list_chains() {
   local f n mark note
   for f in "$DIR"/*.state; do
     [[ -f "$f" ]] || continue
-    n="$(basename "$f" .state)"; mark=" "; [[ "$n" == "$CHAIN" ]] && mark="*"
+    n="$(basename "$f" .state)"
+    valid_chain "$n" 2>/dev/null || continue   # skip foreign *.state names (never ours; may carry control bytes)
+    mark=" "; [[ "$n" == "$CHAIN" ]] && mark="*"
     note=""; [[ -f "$DIR/$n.note" && ! -L "$DIR/$n.note" ]] && note="$(head -n1 "$DIR/$n.note" | tr -d '\000-\037\177')"
     printf '%s [%s] %s%s\n' "$mark" "$n" "$(render_file "$f")" "${note:+  # $note}"
   done
@@ -89,17 +125,25 @@ note_chain() {
   ensure_dir || return 1
   if [[ $# -eq 0 ]]; then [[ -f "$NOTE" ]] && head -n1 "$NOTE"; return 0; fi
   valid_name "$*" || return 2
-  printf '%s\n' "$*" > "$NOTE"
+  printf '%s\n' "$*" | atomic_write "$NOTE"
 }
 
 ensure_dir() {
   mkdir -p "$DIR" || return 1
   safe_state || return 1
-  [[ -f "$DIR/.gitignore" ]] || printf '*\n' > "$DIR/.gitignore"
+  [[ -f "$DIR/.gitignore" && ! -L "$DIR/.gitignore" ]] || printf '*\n' | atomic_write "$DIR/.gitignore"
 }
 
-# Atomic write: stdin → $STATE via a temp file in the same dir.
-write_state() { local tmp; tmp="$(mktemp "$DIR/.state.XXXXXX")" || return 1; cat > "$tmp" && mv -f "$tmp" "$STATE"; }
+# Atomic write: stdin → <path> via a temp file in the same dir. Refuses a symlinked <path>
+# outright — `mv` onto a symlink that resolves to a directory would drop the temp file inside
+# it (writing outside $DIR). Every state artifact (current, .gitignore, <chain>.cycle, note,
+# state) writes here, so a repo-planted symlink can never redirect a write.
+atomic_write() {
+  [[ -L "$1" ]] && { echo "steps.sh: refusing symlinked $1" >&2; return 1; }
+  local tmp; tmp="$(mktemp "$DIR/.w.XXXXXX")" || return 1
+  cat > "$tmp" && mv -f "$tmp" "$1"
+}
+write_state() { atomic_write "$STATE"; }
 
 # update <name> <status> [detail] — rewrite matching row. After `done`, activate the first
 # planned row only if no row is active (out-of-order use never yields two ● at once).
@@ -114,6 +158,10 @@ update() {
     sts+=("$st"); names+=("$name"); details+=("$detail")
   done < "$STATE"
   [[ $hit == 1 ]] || { echo "steps.sh: unknown step '$target'" >&2; return 1; }
+  # single-current-phase invariant: activating a step demotes any other active step to planned.
+  if [[ "$newst" == active ]]; then
+    for i in "${!sts[@]}"; do [[ "${names[$i]}" != "$target" && "${sts[$i]}" == active ]] && sts[$i]=planned; done
+  fi
   for st in "${sts[@]}"; do [[ "$st" == active ]] && any_active=1; done
   if [[ "$newst" == done && $any_active == 0 ]]; then
     for i in "${!sts[@]}"; do [[ "${sts[$i]}" == planned ]] && { sts[$i]=active; break; }; done
@@ -130,7 +178,37 @@ set_chain() {
     seen+="$n"$'\n'
   done
   ensure_dir || return 1
+  rm -f "$DIR/$CHAIN.cycle"   # a fresh set is pass 1 — drop any stale ↻ counter
   { printf 'active\t%s\t\n' "$1"; shift; for n in "$@"; do printf 'planned\t%s\t\n' "$n"; done; } | write_state
+}
+
+# cycle <step>... — re-arm a loop *segment* for its next pass. The named steps are the loop
+# body: they reset to planned (first one active), steps outside the body are left untouched,
+# and the ↻ counter bumps. No args reuses the body from the last cycle. Absent counter means
+# we're leaving pass 1, so the next pass is ↻2.
+cycle_chain() {
+  [[ -f "$STATE" ]] || { echo "steps.sh: no chain — run 'set' first" >&2; return 1; }
+  safe_state || return 1
+  local cf="$DIR/$CHAIN.cycle" st name detail x
+  local -a body=("$@") names=()
+  while IFS=$'\t' read -r st name detail; do [[ -n "$name" ]] && names+=("$name"); done < "$STATE"
+  if [[ ${#body[@]} -eq 0 && -f "$cf" && ! -L "$cf" ]]; then          # reuse the stored body
+    { IFS= read -r x; IFS= read -r x; } < "$cf"; IFS=$'\t' read -r -a body <<<"$x"
+  fi
+  [[ ${#body[@]} -ge 1 ]] || { echo "steps.sh: cycle needs the looping step(s): steps.sh cycle <step>..." >&2; return 2; }
+  for name in "${body[@]}"; do in_list "$name" "${names[@]}" || { echo "steps.sh: unknown step '$name'" >&2; return 1; }; done
+  local cnt=1
+  [[ -f "$cf" && ! -L "$cf" ]] && { IFS= read -r x < "$cf"; x="${x//[^0-9]/}"; cnt="${x:-1}"; }
+  cnt=$((cnt+1))
+  local first=""                                                       # first body step in chain order → active
+  for name in "${names[@]}"; do in_list "$name" "${body[@]}" && { first="$name"; break; }; done
+  { while IFS=$'\t' read -r st name detail; do
+      [[ -z "$name" ]] && continue
+      if in_list "$name" "${body[@]}"; then detail=""; [[ "$name" == "$first" ]] && st=active || st=planned
+      elif [[ "$st" == active ]]; then st=planned; fi   # re-arming the loop clears a stray active outside the body
+      printf '%s\t%s\t%s\n' "$st" "$name" "$detail"
+    done < "$STATE"; } | write_state
+  { printf '%s\n' "$cnt"; local IFS=$'\t'; printf '%s\n' "${body[*]}"; } | atomic_write "$cf"
 }
 
 # msg sent|recv <session> [text] — record inter-session comms as the active step's detail.
@@ -162,6 +240,9 @@ selfcheck() {
   [[ "$(r)" == "[default] init ✓ → loop ✓ → summary ✗" ]] || fail fail
   bash "$s" set a b c; bash "$s" start b; bash "$s" done a
   [[ "$(r)" == "[default] a ✓ → b ● → c ○" ]] || fail out-of-order
+  # single-active: `start` transfers active, never leaves two ● (greptile #3)
+  bash "$s" set a b; bash "$s" start b
+  [[ "$(r)" == "[default] a ○ → b ●" ]] || fail "start-single-active: $(r)"
   bash "$s" set a a b 2>/dev/null && fail duplicate-accepted
   bash "$s" set $'a\tb' 2>/dev/null && fail tab-name-accepted
   bash "$s" set "" b 2>/dev/null && fail empty-name-accepted
@@ -182,16 +263,52 @@ selfcheck() {
   bash "$s" use pr >/dev/null; bash "$s" clear; [[ -z "$(r)" && ! -e "$d/pr.note" ]] || fail named-clear
   [[ -f "$d/default.state" ]] || fail clear-scoped
   bash "$s" use ../evil 2>/dev/null && fail bad-chain-name
-  bash "$s" set --name build compile test >/dev/null
-  [[ "$(r)" == "[build] compile ● → test ○" ]] || fail "named-set: $(r)"
-  bash "$s" set --name '../evil' x 2>/dev/null && fail named-set-bad-name
   # inter-session comms land on the active step
   bash "$s" use default >/dev/null; bash "$s" set ask wait >/dev/null; bash "$s" msg sent RCM-info "need diagnostics" >/dev/null
   [[ "$(r)" == "[default] ask|⇢ RCM-info: need diagnostics ● → wait ○" ]] || fail "msg-sent: $(r)"
   bash "$s" done ask >/dev/null; bash "$s" msg recv RCM-info >/dev/null
   [[ "$(r)" == "[default] ask ✓ → wait|⇠ RCM-info ●" ]] || fail "msg-recv: $(r)"
   bash "$s" msg bogus x 2>/dev/null && fail msg-bad-direction
+  # `set --name` names the chain in one command
+  bash "$s" set --name build compile test >/dev/null
+  [[ "$(r)" == "[build] compile ● → test ○" ]] || fail "named-set: $(r)"
+  bash "$s" set --name '../evil' x 2>/dev/null && fail named-set-bad-name
+  # a hostile `current` file must fall back to `default`, never traverse out of $DIR
+  bash "$s" use default >/dev/null; bash "$s" set fallback >/dev/null
+  printf 'active\tSECRET\t\n' > "$d/../evil.state"; printf '../evil' > "$d/current"
+  [[ "$(r)" == "[default] fallback ●" ]] || fail current-traversal-read
+  bash "$s" set p >/dev/null; [[ "$(cat "$d/../evil.state")" == $'active\tSECRET\t' ]] || fail current-traversal-write
+  rm -f "$d/../evil.state" "$d/current"
   bash "$s" clear
+  # loops: cycle brackets a segment (the named steps) with ↻N; steps outside stay untouched;
+  # fresh set resets to pass 1; clear drops the counter
+  bash "$s" use loop >/dev/null; bash "$s" set fetch check report >/dev/null
+  bash "$s" done fetch >/dev/null
+  [[ "$(r)" == "[loop] fetch ✓ → check ● → report ○" ]] || fail "cycle-pre: $(r)"
+  [[ "$(bash "$s" cycle fetch check)" == "[loop] [fetch ● → check ○ ↻2] → report ○" ]] || fail "cycle-2: $(r)"
+  bash "$s" done fetch >/dev/null; bash "$s" done check >/dev/null   # loop body done → report auto-active
+  [[ "$(r)" == "[loop] [fetch ✓ → check ✓ ↻2] → report ●" ]] || fail "cycle-report-active: $(r)"
+  # cycle with report ● must clear that stray active (single-active invariant, greptile #2)
+  [[ "$(bash "$s" cycle)" == "[loop] [fetch ● → check ○ ↻3] → report ○" ]] || fail "cycle-clears-stray-active: $(r)"
+  bash "$s" cycle zzz 2>/dev/null && fail cycle-unknown-step
+  [[ "$(bash "$s" set fetch check report)" == "[loop] fetch ● → check ○ → report ○" ]] || fail "cycle-reset: $(r)"
+  bash "$s" done fetch >/dev/null                                    # single-step loop body
+  bash "$s" cycle check >/dev/null; [[ -f "$d/loop.cycle" ]] || fail cycle-file
+  [[ "$(r)" == "[loop] fetch ✓ → [check ● ↻2] → report ○" ]] || fail "cycle-single: $(r)"
+  bash "$s" clear; [[ ! -e "$d/loop.cycle" ]] || fail cycle-clear
+  bash "$s" use default >/dev/null
+  # symlinked state artifacts are refused, never written through (greptile #1)
+  local out2="$d/../outside2"; : > "$out2"
+  ln -sfn "$out2" "$d/current"; bash "$s" use victim >/dev/null 2>&1     # symlink → external file
+  [[ -s "$out2" ]] && fail current-symlink-file-write
+  local outd="$d/../outside2dir"; mkdir -p "$outd"
+  ln -sfn "$outd" "$d/current"; bash "$s" use victim >/dev/null 2>&1     # symlink → external dir
+  [[ -n "$(ls -A "$outd")" ]] && fail current-symlink-dir-write
+  rm -rf "$out2" "$outd" "$d/current"
+  bash "$s" use default >/dev/null
+  # foreign *.state filename with control bytes is skipped by list, not printed (greptile #4)
+  printf 'active\tx\t\n' > "$d/$(printf 'ev\033il').state"
+  [[ "$(bash "$s" list)" != *$'\033'* ]] || fail list-control-bytes
   [[ "$(cat "$d/.gitignore")" == "*" ]] || fail gitignore
   rm -rf "$d"; echo "selfcheck OK"
 }
@@ -206,14 +323,15 @@ main() {
     start) need_name "${1-}" start && valid_name "${2-x}" && update "$1" active "${2-}" && render ;;
     done)  need_name "${1-}" done && update "$1" done && render ;;
     fail)  need_name "${1-}" fail && update "$1" failed && render ;;
+    cycle) cycle_chain "$@" && render ;;
     msg)   msg_step "$@" && render ;;
     render) render ;;
-    clear) [[ -L "$STATE" || -L "$NOTE" ]] || rm -f "$STATE" "$NOTE" ;;
+    clear) [[ -L "$STATE" || -L "$NOTE" ]] || rm -f "$STATE" "$NOTE" "$DIR/$CHAIN.cycle" ;;
     use)   need_name "${1-}" use && use_chain "$1" ;;
     list)  list_chains ;;
     note)  note_chain "$@" ;;
     --selfcheck) selfcheck ;;
-    -h|--help) sed -n '2,21p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' ;;
+    -h|--help) sed -n '2,23p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' ;;
     *) echo "steps.sh: unknown command '$cmd'" >&2; return 2 ;;
   esac
 }

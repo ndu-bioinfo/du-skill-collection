@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Uninstall skills that were installed from this repo (remove the symlinks in
-# ~/.claude/skills/; for prompt-coach unwire its hooks, for step-status restore the
+# ~/.claude/skills/; for prompt-coach unwire its hooks, for workflow-tracker restore the
 # previous statusLine and drop its SessionStart hook in settings.json).
 #
 #   ./uninstall.sh                 # uninstall ALL skills from this repo
@@ -43,7 +43,7 @@ for name in "${NAMES[@]}"; do
   case "$target" in
     "$REPO/"*) rm -f "$dst"; echo "uninstalled: $name"
                [ "$name" = "prompt-coach" ] && removed_prompt_coach=1
-               [ "$name" = "step-status" ] && removed_step_status=1 ;;
+               [ "$name" = "workflow-tracker" ] && removed_step_status=1 ;;
     *) echo "skip: $dst points to $target (not this repo) — leaving it alone" >&2 ;;
   esac
 done
@@ -82,9 +82,9 @@ print(f"unwired {removed} prompt-coach hook(s) from " + settings if removed
 PY
 fi
 
-# Unwire step-status: restore the wrapped status line (or drop the standalone one) and its hook.
+# Unwire workflow-tracker: restore the wrapped status line (or drop the standalone one) and its hook.
 if [ "$removed_step_status" = 1 ] && [ -f "$SETTINGS" ]; then
-  CLAUDE_SETTINGS="$SETTINGS" bash "$REPO/step-status/scripts/wire_statusline.sh" --unwire
+  CLAUDE_SETTINGS="$SETTINGS" bash "$REPO/workflow-tracker/scripts/wire_statusline.sh" --unwire
 fi
 
 echo

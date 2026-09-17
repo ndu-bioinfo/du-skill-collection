@@ -1,6 +1,6 @@
 {
-  "name": "step-status",
-  "version": "0.5.0",
+  "name": "workflow-tracker",
+  "version": "0.6.1",
   "description": "Step-chain progress ticker posted in the conversation during multi-step workflows.",
   "author": {
     "name": "ndu-bioinfo"

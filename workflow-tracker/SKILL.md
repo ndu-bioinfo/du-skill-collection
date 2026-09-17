@@ -1,13 +1,14 @@
 ---
-name: step-status
+name: workflow-tracker
 description: |
   Report progress through a multi-step workflow (a skill or task with two or more named
   phases such as init → loop → summary) as a one-line step chain posted in the conversation
   at every phase transition: `init ✓ → loop|check agent status ● → summary ○`. Use whenever
   you start such a workflow, when the user asks for a status/progress indicator, or types
-  "/step-status". Claude records transitions with scripts/steps.sh and quotes the echoed
+  "/workflow-tracker". Claude records transitions with scripts/steps.sh and quotes the echoed
   chain in its reply; showing it in the status line as well is optional.
 triggers:
+  - workflow-tracker
   - step-status
   - status line progress
   - show pipeline status
@@ -15,7 +16,7 @@ triggers:
   - workflow progress indicator
 ---
 
-# step-status
+# workflow-tracker
 
 A step chain reported in the conversation, driven by explicit CLI calls. Nothing is
 inferred: you tell it the phases, mark them as you go, and post the chain after each mark.
@@ -27,16 +28,17 @@ a detail after `|` (e.g. `loop|check agent status`).
 
 `STEPS` below means `bash <this skill's dir>/scripts/steps.sh`. The Skill tool prints the
 base directory of this skill when loaded; installed as a plugin it is
-`${CLAUDE_PLUGIN_ROOT}`, as a symlinked skill it is `~/.claude/skills/step-status`. Run it
-via the Bash tool from the project root — state lives in `./.step-status/state`
-(self-ignoring, keyed by cwd).
+`${CLAUDE_PLUGIN_ROOT}` (Codex: `${PLUGIN_ROOT}`), as a symlinked skill it is
+`~/.claude/skills/workflow-tracker`. Run it via the Bash tool from the project root — state
+lives in `./.step-status/` (self-ignoring, keyed by cwd).
 
-1. **At the start** of a multi-step workflow, define the chain once, naming it for the
-   task (short, kebab-case — `fix-auth`, `release-2.4`). The first step becomes active:
+1. **At the start** of a multi-step workflow, define the chain once, naming it for the task
+   with `--name`. That name is the `[bracket]` label on every ticker line, so pick something
+   descriptive (`add-plugin`, `fix-auth`) — never leave it as `default`. The first step
+   becomes active:
    ```bash
-   STEPS set --name fix-auth init loop summary     # → [fix-auth] init ● → loop ○ → summary ○
+   STEPS set --name add-plugin init loop summary   # → [add-plugin] init ● → loop ○ → summary ○
    ```
-   Plain `STEPS set init loop summary` also works and lands on the chain called `default`.
 2. **On each transition**, run the command and **post the line it echoes in your reply**,
    on its own line, before continuing — that message *is* the progress indicator. The
    user may not see tool output, so a transition you do not quote is invisible.
@@ -68,14 +70,14 @@ reply is handled, `done` the step as usual (or `start <step> "<detail>"` to over
 ### Named chains (several workflows in one session)
 
 Every chain has a name and every rendered line starts with it in brackets, so the user can
-always tell which workflow a ticker line belongs to. Without `use`, the name is `default`
-(`[default] init ● → …`). Give a chain a real name when the user is likely to come back to
-it after doing something else (a PR review, a migration, an investigation):
+always tell which workflow a ticker line belongs to. `set --name <name>` names the current
+chain as you define it (the one-command form used above); `use <name>` switches to (or
+creates) another. Use a distinct `use` when the user is likely to come back to a thread
+after doing something else (a PR review, a migration, an investigation):
 
 ```bash
-STEPS set --name pr-42 triage fix verify # create + name in one go; renders as [pr-42] …
-STEPS use pr-42                          # later: switch back to it (chains are independent —
-                                         # set/done/clear act on the current one)
+STEPS use pr-42                          # switch to (or create) chain "pr-42"; renders as [pr-42] …
+STEPS set triage fix verify              # chains are independent — set/done/clear act on the current one
 STEPS note "PR 42: flaky test in auth"   # one-line context so you can pick the thread up later
 STEPS list                               # * marks current:  * [pr-42] triage ✓ → fix ● → verify ○  # PR 42: …
 STEPS use default                        # switch back; pr-42 keeps its state
@@ -88,8 +90,31 @@ then continue from the active step. Before leaving a chain, `STEPS note` what th
 action is. `STEPS clear` removes only the current chain; a fresh session (startup/clear)
 removes all of them.
 
+### Loops (`/loop`, polling, retry cadences)
+
+A linear chain marks each step done once — wrong shape for a workflow that repeats. For a
+loop, name the repeating steps as a *segment* with `cycle`; they bracket off with a `↻N`
+pass counter while steps outside the loop (a final report, a teardown) stay put:
+
+```bash
+STEPS set --name watch-ci fetch check report   # [watch-ci] fetch ● → check ○ → report ○
+STEPS done fetch                                # normal pass 1 — no counter yet
+STEPS cycle fetch check                         # → [watch-ci] [fetch ● → check ○ ↻2] → report ○
+STEPS done fetch ; STEPS done check
+STEPS cycle                                     # no args reuses the body → ↻3, body re-armed
+# … loop until the exit condition …
+STEPS done fetch ; STEPS done check ; STEPS done report   # body done, terminal step runs
+```
+
+- `cycle <step>...` marks those steps the loop body: resets them to planned (first active),
+  bumps `↻N`, and leaves every other step alone. `cycle` with no args reuses the last body.
+- In a `/loop`, the session persists across ticks, so `cycle` once per iteration (at the top
+  of the tick) and quote the echoed line — that line is the per-iteration ticker.
+- `↻N` appears only once looping starts; a fresh `set` drops it back to pass 1.
+- The body should be a contiguous run (it brackets from the first to the last body step).
+
 Rules:
-- One `set` per workflow. Re-running `set` restarts the chain.
+- One `set` per workflow. Re-running `set` restarts the chain (and clears any `↻` counter).
 - `done X` activates the next *planned* step, so you rarely need `start` unless you
   want to attach a detail or skip ahead.
 - Names with spaces are fine (quote them). Keep them short — it's a status bar.
@@ -101,7 +126,7 @@ Rules:
 One short line from you at each transition, e.g.
 
 ```
-[default] init ✓ → loop|check agent status ● → summary ○
+[add-plugin] init ✓ → loop|check agent status ● → summary ○
 ```
 
 Every mutating `steps.sh` command echoes that line; quote it verbatim. Keep it to the chain
@@ -110,13 +135,13 @@ chain left in the cwd from a previous session. A `UserPromptSubmit` hook injects
 chain (or a nudge to `set` one) into every turn, so the ticker does not depend on Claude
 remembering this skill exists.
 
-## Optional: mirror the chain in the status line (`/step-status setup`)
+## Optional: mirror the chain in the status line (`/workflow-tracker setup`)
 
 Not needed for the conversation ticker. If the user explicitly wants the chain in the
 status bar too, plugins cannot set `statusLine`, so run:
 
 ```bash
-bash <this skill's dir>/scripts/wire_statusline.sh          # STEP_STATUS_NO_HOOK=1 when installed as a plugin (hook already shipped)
+bash <this skill's dir>/scripts/wire_statusline.sh          # plugin installs skip the hook automatically (already shipped)
 bash <this skill's dir>/scripts/wire_statusline.sh --unwire # undo
 ```
 
@@ -130,9 +155,9 @@ for you. Hook manifest for reference: `hooks/hooks.json`.
 ## Checks
 
 ```bash
-bash step-status/scripts/steps.sh --selfcheck
-bash step-status/scripts/wire_statusline.sh --selfcheck   # settings.json wrap/unwire round trip
-for s in step-status/scripts/*.sh; do bash -n "$s"; done
+bash workflow-tracker/scripts/steps.sh --selfcheck
+bash workflow-tracker/scripts/wire_statusline.sh --selfcheck   # settings.json wrap/unwire round trip
+for s in workflow-tracker/scripts/*.sh; do bash -n "$s"; done
 ```
 
 ## Gotchas

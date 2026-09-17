@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Wire (or unwire) the step-status status line in Claude Code settings.json.
-# Plugins cannot set statusLine, so this is the one manual step; install.sh calls it too.
+# Wire (or unwire) the workflow-tracker status line in Claude Code settings.json.
+# Plugins cannot set statusLine, so this is the one manual step (opt-in, run by the user).
 #
 #   wire_statusline.sh            # wrap an existing statusLine command, or install standalone
 #   wire_statusline.sh --unwire   # restore the previous statusLine exactly / remove the standalone entry
@@ -40,6 +40,11 @@ selfcheck() {
   python3 -c "import json;d=json.load(open('$d/s.json'));assert d['statusLine']['command'].endswith(\"-- 'echo X'\");assert d['permissions']=={'allow':['Bash']};assert len(d['hooks']['SessionStart'])==1" || fail wrapped-shape
   bash "$s" --unwire | grep -q restored || fail unwire
   python3 -c "import json,sys;a=json.load(open('$d/s.json'));b=json.load(open('$d/s.before'));sys.exit(a!=b)" || fail round-trip
+  # 2b. a non-object entry in a hook-event list must not crash --unwire (greptile #5)
+  HERE="$HERE" python3 -c "import json,os;json.dump({'statusLine':{'type':'command','command':'bash \"'+os.environ['HERE']+'/statusline.sh\"'},'hooks':{'SessionStart':['junk',{'hooks':[]}]}},open('$d/n.json','w'))"
+  export CLAUDE_SETTINGS="$d/n.json"
+  bash "$s" --unwire >/dev/null 2>&1 || fail unwire-nonobject-crash
+  python3 -c "import json;d=json.load(open('$d/n.json'));assert 'junk' in d['hooks']['SessionStart']" || fail unwire-nonobject-preserved
   # 3. standalone → unwire removes the key; hooks:null tolerated
   printf '{"hooks":null}' > "$d/t.json"; export CLAUDE_SETTINGS="$d/t.json"
   bash "$s" | grep -q standalone || fail standalone
@@ -56,9 +61,12 @@ selfcheck() {
 [[ "$MODE" == selfcheck ]] && { selfcheck; exit 0; }
 
 # Plugin cache dirs are versioned; copy scripts somewhere stable and wire that.
+# A plugin install already ships the SessionStart hook via hooks/hooks.json, so never
+# also add it to settings.json here (would duplicate) — force NO_HOOK in this branch.
 if [[ "$HERE" == */plugins/cache/* ]]; then
   mkdir -p "$HOME_DIR/bin" && cp "$HERE"/steps.sh "$HERE"/statusline.sh "$HERE"/hook_session_start.sh "$HOME_DIR/bin/"
   HERE="$HOME_DIR/bin"
+  STEP_STATUS_NO_HOOK=1
 fi
 mkdir -p "$HOME_DIR"
 
@@ -70,13 +78,13 @@ if os.path.exists(settings):
     with open(settings) as f: raw = f.read()
     if raw.strip():
         try: data = json.loads(raw)
-        except Exception as e: sys.exit(f"step-status: refusing to rewrite {settings}: not valid JSON ({e})")
-if not isinstance(data, dict): sys.exit(f"step-status: {settings} is not a JSON object")
+        except Exception as e: sys.exit(f"workflow-tracker: refusing to rewrite {settings}: not valid JSON ({e})")
+if not isinstance(data, dict): sys.exit(f"workflow-tracker: {settings} is not a JSON object")
 hooks = data.get("hooks")
 if not isinstance(hooks, dict): hooks = {}
 data["hooks"] = hooks
 def ours(cmd, script): return f'"{here}/{script}"' in cmd          # exactly this install (AGENTS.md: only touch our own entries)
-def foreign(cmd): return "step-status" in cmd and "statusline.sh" in cmd and not ours(cmd, "statusline.sh")
+def foreign(cmd): return "workflow-tracker" in cmd and "statusline.sh" in cmd and not ours(cmd, "statusline.sh")
 sl = data.get("statusLine") if isinstance(data.get("statusLine"), dict) else None
 old = (sl or {}).get("command") or ""
 sl_script = f'bash "{here}/statusline.sh"'
@@ -86,7 +94,7 @@ if mode == "wire":
     if ours(old, "statusline.sh"):
         notes.append("already wired")
     elif foreign(old):
-        sys.exit(f"step-status: statusLine is already wired by another step-status install ({old}); run --unwire there first")
+        sys.exit(f"workflow-tracker: statusLine is already wired by another workflow-tracker install ({old}); run --unwire there first")
     else:
         with open(prev, "w") as f: json.dump(sl, f)      # None when there was no statusLine
         if old:
@@ -106,7 +114,8 @@ else:
     for ev in list(hooks):
         kept_groups = []
         for g in hooks[ev] if isinstance(hooks[ev], list) else []:
-            kept = [h for h in g.get("hooks", []) if not ours(h.get("command") or "", "hook_session_start.sh")]
+            if not isinstance(g, dict): kept_groups.append(g); continue   # leave foreign entries untouched
+            kept = [h for h in g.get("hooks", []) if not (isinstance(h, dict) and ours(h.get("command") or "", "hook_session_start.sh"))]
             removed += len(g.get("hooks", [])) - len(kept)
             if kept: g["hooks"] = kept; kept_groups.append(g)
         if kept_groups: hooks[ev] = kept_groups
@@ -126,12 +135,12 @@ else:
             else:
                 data.pop("statusLine", None); notes.append("removed standalone status line")
     else:
-        notes.append("no step-status status line found")
+        notes.append("no workflow-tracker status line found")
 if not hooks: data.pop("hooks", None)
 os.makedirs(os.path.dirname(settings) or ".", exist_ok=True)
 tmp = settings + ".tmp"
 with open(tmp, "w") as f:
     json.dump(data, f, indent=2); f.write("\n")
 os.replace(tmp, settings)
-print("step-status: " + "; ".join(notes))
+print("workflow-tracker: " + "; ".join(notes))
 PY
