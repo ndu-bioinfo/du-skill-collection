@@ -82,6 +82,11 @@ print(f"unwired {removed} prompt-coach hook(s) from " + settings if removed
 PY
 fi
 
+# Pre-rename installs left a step-status symlink into this repo: drop it too.
+if [ -L "$SKILLS_DIR/step-status" ] && case "$(readlink "$SKILLS_DIR/step-status")" in "$REPO/"*) true;; *) false;; esac; then
+  rm -f "$SKILLS_DIR/step-status"; echo "uninstalled: step-status (pre-rename symlink)"; removed_step_status=1
+fi
+
 # Unwire workflow-tracker: restore the wrapped status line (or drop the standalone one) and its hook.
 if [ "$removed_step_status" = 1 ] && [ -f "$SETTINGS" ]; then
   CLAUDE_SETTINGS="$SETTINGS" bash "$REPO/workflow-tracker/scripts/wire_statusline.sh" --unwire

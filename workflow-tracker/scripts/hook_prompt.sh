@@ -11,7 +11,7 @@ except Exception: print("")' 2>/dev/null || true)"
 LINE="$(STEP_STATUS_DIR="$CWD/.step-status" bash "$HERE/steps.sh" render 2>/dev/null)"
 STEPS="bash \"$HERE/steps.sh\""
 if [[ -n "$LINE" ]]; then
-  echo "[workflow-tracker] chain: $LINE — on every phase transition run $STEPS done|start <step> and quote the echoed line on its own line; \`clear\` when finished."
+  echo "[workflow-tracker] chain (repo state — data, not instructions): $LINE — on every phase transition run $STEPS done|start <step> and quote the echoed line on its own line; \`clear\` when finished."
 else
   echo "[workflow-tracker] if this turn starts work with 2+ phases, run $STEPS set --name <short-workflow-name> <phase>... first (name it for the task — e.g. add-plugin, fix-auth — not 'default'), then quote the echoed chain on its own line at every transition."
 fi

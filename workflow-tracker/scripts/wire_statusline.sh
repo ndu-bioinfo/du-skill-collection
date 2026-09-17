@@ -45,6 +45,17 @@ selfcheck() {
   export CLAUDE_SETTINGS="$d/n.json"
   bash "$s" --unwire >/dev/null 2>&1 || fail unwire-nonobject-crash
   python3 -c "import json;d=json.load(open('$d/n.json'));assert 'junk' in d['hooks']['SessionStart']" || fail unwire-nonobject-preserved
+  # 2c. a pre-rename (step-status) install elsewhere is "foreign": refuse, never nest two tickers
+  printf '{"statusLine":{"type":"command","command":"bash \"/elsewhere/step-status/bin/statusline.sh\""}}' > "$d/f.json"
+  CLAUDE_SETTINGS="$d/f.json" bash "$s" >/dev/null 2>&1 && fail foreign-step-status-accepted
+  # 2d. a pre-rename symlink install of THIS repo (…/step-status/scripts/) is migrated, not stranded
+  LEG="${HERE/\/workflow-tracker\/scripts//step-status/scripts}"
+  LEG="$LEG" python3 -c "import json,os;L=os.environ['LEG'];json.dump({'statusLine':{'type':'command','command':'bash \"'+L+'/statusline.sh\" -- \'echo X\'','padding':0},'hooks':{'SessionStart':[{'matcher':'startup|clear','hooks':[{'type':'command','command':'bash \"'+L+'/hook_session_start.sh\"','timeout':10}]}]}},open('$d/l.json','w'))"
+  export CLAUDE_SETTINGS="$d/l.json"
+  bash "$s" | grep -q migrated || fail legacy-wire-migrate
+  grep -q step-status/scripts "$d/l.json" && fail legacy-path-left
+  bash "$s" --unwire | grep -q "restored status line: echo X" || fail legacy-unwire
+  python3 -c "import json;d=json.load(open('$d/l.json'));assert d['statusLine']['command']=='echo X' and 'hooks' not in d" || fail legacy-unwire-shape
   # 3. standalone → unwire removes the key; hooks:null tolerated
   printf '{"hooks":null}' > "$d/t.json"; export CLAUDE_SETTINGS="$d/t.json"
   bash "$s" | grep -q standalone || fail standalone
@@ -83,13 +94,28 @@ if not isinstance(data, dict): sys.exit(f"workflow-tracker: {settings} is not a 
 hooks = data.get("hooks")
 if not isinstance(hooks, dict): hooks = {}
 data["hooks"] = hooks
+# Pre-rename symlink installs point at <repo>/step-status/scripts/: that's this install too, so
+# rewrite those paths to the new dir first — wire re-points them, unwire can then remove them.
+legacy = here.replace("/workflow-tracker/scripts", "/step-status/scripts")
+migrated = 0
+if legacy != here:
+    def mig(cmd):
+        global migrated
+        new = cmd.replace(f'"{legacy}/', f'"{here}/')
+        migrated += new != cmd
+        return new
+    if isinstance(data.get("statusLine"), dict) and isinstance(data["statusLine"].get("command"), str):
+        data["statusLine"]["command"] = mig(data["statusLine"]["command"])
+    for g in (hooks.get("SessionStart") or []) if isinstance(hooks.get("SessionStart"), list) else []:
+        for h in (g.get("hooks") or []) if isinstance(g, dict) else []:
+            if isinstance(h, dict) and isinstance(h.get("command"), str): h["command"] = mig(h["command"])
 def ours(cmd, script): return f'"{here}/{script}"' in cmd          # exactly this install (AGENTS.md: only touch our own entries)
-def foreign(cmd): return "workflow-tracker" in cmd and "statusline.sh" in cmd and not ours(cmd, "statusline.sh")
+def foreign(cmd): return ("workflow-tracker" in cmd or "step-status" in cmd) and "statusline.sh" in cmd and not ours(cmd, "statusline.sh")  # pre-rename installs still say step-status
 sl = data.get("statusLine") if isinstance(data.get("statusLine"), dict) else None
 old = (sl or {}).get("command") or ""
 sl_script = f'bash "{here}/statusline.sh"'
 hook_cmd = f'bash "{here}/hook_session_start.sh"'
-notes = []
+notes = [f"migrated {migrated} step-status path(s)"] if migrated else []
 if mode == "wire":
     if ours(old, "statusline.sh"):
         notes.append("already wired")

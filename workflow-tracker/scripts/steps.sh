@@ -81,9 +81,9 @@ render() {
 # step in chain order); nothing if the chain isn't looping. The ↻ segment lives inside the chain.
 read_cycle() {
   local cf="$DIR/$CHAIN.cycle" cnt body
-  [[ -f "$cf" && ! -L "$cf" ]] || return 0
+  [[ -f "$STATE" && -f "$cf" && ! -L "$cf" ]] || return 0
   { IFS= read -r cnt; IFS= read -r body; } < "$cf"
-  cnt="${cnt//[^0-9]/}"; [[ -n "$cnt" ]] || return 0
+  cnt="${cnt//[^0-9]/}"; cnt="${cnt:0:6}"; [[ -n "$cnt" ]] || return 0   # repo-controlled: strip + cap so junk can't overflow
   local -a bodyarr=(); IFS=$'\t' read -r -a bodyarr <<<"$body"
   [[ ${#bodyarr[@]} -ge 1 ]] || return 0
   local st name detail bf="" bl=""
@@ -104,12 +104,13 @@ switch_chain() {
 
 use_chain() {
   switch_chain "$1" || return $?
-  local line; line="$(render_file "$STATE")"
-  printf '[%s] %s\n' "$CHAIN" "${line:-(empty — run 'set')}"
+  [[ -f "$STATE" ]] && { render; return; }
+  printf '[%s] (empty — run 'set')\n' "$CHAIN"
 }
 
 list_chains() {
   [[ -d "$DIR" ]] || return 0
+  safe_state || return 1
   local f n mark note
   for f in "$DIR"/*.state; do
     [[ -f "$f" ]] || continue
@@ -140,8 +141,9 @@ ensure_dir() {
 # state) writes here, so a repo-planted symlink can never redirect a write.
 atomic_write() {
   [[ -L "$1" ]] && { echo "steps.sh: refusing symlinked $1" >&2; return 1; }
+  [[ -e "$1" && ! -f "$1" ]] && { echo "steps.sh: refusing non-file $1" >&2; return 1; }   # planted dir: mv would drop the temp inside
   local tmp; tmp="$(mktemp "$DIR/.w.XXXXXX")" || return 1
-  cat > "$tmp" && mv -f "$tmp" "$1"
+  { cat > "$tmp" && mv -f "$tmp" "$1"; } || { rm -f "$tmp"; return 1; }
 }
 write_state() { atomic_write "$STATE"; }
 
@@ -169,7 +171,7 @@ update() {
   for i in "${!sts[@]}"; do printf '%s\t%s\t%s\n' "${sts[$i]}" "${names[$i]}" "${details[$i]}"; done | write_state
 }
 
-set_chain() {
+check_steps() {
   [[ $# -ge 1 ]] || { echo "usage: steps.sh set <name>..." >&2; return 2; }
   local n seen=$'\n'
   for n in "$@"; do
@@ -177,6 +179,9 @@ set_chain() {
     [[ "$seen" == *$'\n'"$n"$'\n'* ]] && { echo "steps.sh: duplicate step name '$n'" >&2; return 2; }
     seen+="$n"$'\n'
   done
+}
+set_chain() {
+  check_steps "$@" || return $?
   ensure_dir || return 1
   rm -f "$DIR/$CHAIN.cycle"   # a fresh set is pass 1 — drop any stale ↻ counter
   { printf 'active\t%s\t\n' "$1"; shift; for n in "$@"; do printf 'planned\t%s\t\n' "$n"; done; } | write_state
@@ -192,14 +197,20 @@ cycle_chain() {
   local cf="$DIR/$CHAIN.cycle" st name detail x
   local -a body=("$@") names=()
   while IFS=$'\t' read -r st name detail; do [[ -n "$name" ]] && names+=("$name"); done < "$STATE"
+  [[ ${#names[@]} -ge 1 ]] || { echo "steps.sh: empty chain — run 'set' first" >&2; return 1; }
   if [[ ${#body[@]} -eq 0 && -f "$cf" && ! -L "$cf" ]]; then          # reuse the stored body
     { IFS= read -r x; IFS= read -r x; } < "$cf"; IFS=$'\t' read -r -a body <<<"$x"
   fi
   [[ ${#body[@]} -ge 1 ]] || { echo "steps.sh: cycle needs the looping step(s): steps.sh cycle <step>..." >&2; return 2; }
   for name in "${body[@]}"; do in_list "$name" "${names[@]}" || { echo "steps.sh: unknown step '$name'" >&2; return 1; }; done
+  local inb=0 left=0                                                   # body must be one contiguous run in chain order
+  for name in "${names[@]}"; do
+    if in_list "$name" "${body[@]}"; then [[ $left == 1 ]] && { echo "steps.sh: loop body must be contiguous steps" >&2; return 2; }; inb=1
+    else [[ $inb == 1 ]] && left=1; fi
+  done
   local cnt=1
-  [[ -f "$cf" && ! -L "$cf" ]] && { IFS= read -r x < "$cf"; x="${x//[^0-9]/}"; cnt="${x:-1}"; }
-  cnt=$((cnt+1))
+  [[ -f "$cf" && ! -L "$cf" ]] && { IFS= read -r x < "$cf"; x="${x//[^0-9]/}"; x="${x:0:6}"; cnt="${x:-1}"; }
+  cnt=$((10#$cnt+1))   # 10#: a hand-edited "08" is not octal
   local first=""                                                       # first body step in chain order → active
   for name in "${names[@]}"; do in_list "$name" "${body[@]}" && { first="$name"; break; }; done
   { while IFS=$'\t' read -r st name detail; do
@@ -227,9 +238,9 @@ msg_step() {
 need_name() { [[ -n "${1-}" ]] || { echo "usage: steps.sh $2 <name>" >&2; return 2; }; }
 
 selfcheck() {
-  local d s; d="$(mktemp -d)"; s="${BASH_SOURCE[0]}"; export STEP_STATUS_DIR="$d"
+  local root d s; root="$(mktemp -d)"; d="$root/state"; mkdir "$d"; s="${BASH_SOURCE[0]}"; export STEP_STATUS_DIR="$d"   # two levels so $d/.. fixtures stay private
   r() { bash "$s" render; }
-  fail() { echo "FAIL $1: $(r)"; exit 1; }
+  fail() { echo "FAIL $1: $(r)"; rm -rf "$root"; exit 1; }
   bash "$s" set init loop summary
   [[ "$(r)" == "[default] init ● → loop ○ → summary ○" ]] || fail set
   bash "$s" done init; bash "$s" start loop "check agent status"
@@ -292,11 +303,32 @@ selfcheck() {
   [[ "$(bash "$s" cycle)" == "[loop] [fetch ● → check ○ ↻3] → report ○" ]] || fail "cycle-clears-stray-active: $(r)"
   bash "$s" cycle zzz 2>/dev/null && fail cycle-unknown-step
   [[ "$(bash "$s" set fetch check report)" == "[loop] fetch ● → check ○ → report ○" ]] || fail "cycle-reset: $(r)"
+  bash "$s" cycle 2>/dev/null && fail cycle-noargs-nobody                # fresh set: no stored body to reuse
+  # non-contiguous body brackets the whole span (documented ceiling); garbage/huge counters are neutralised
+  bash "$s" cycle fetch report 2>/dev/null && fail cycle-noncontiguous-accepted
+  printf 'abc\nzzz\n' > "$d/loop.cycle"; [[ "$(r)" == "[loop] fetch ● → check ○ → report ○" ]] || fail "cycle-garbage-ignored: $(r)"
+  printf '99999999999999999999\nfetch\n' > "$d/loop.cycle"; bash "$s" cycle >/dev/null
+  [[ "$(r)" == "[loop] [fetch ● ↻100000] → check ○ → report ○" ]] || fail "cycle-overflow: $(r)"
+  printf '08\nfetch\n' > "$d/loop.cycle"; [[ "$(bash "$s" cycle)" == "[loop] [fetch ● ↻9] → check ○ → report ○" ]] || fail "cycle-octal: $(r)"
+  rm -f "$d/loop.state"; bash "$s" render 2>&1 | grep -q . && fail cycle-without-state-noise   # stale .cycle alone renders nothing, quietly
+  : > "$d/loop.state"; bash "$s" cycle fetch 2>/dev/null && fail cycle-empty-state
+  bash "$s" set fetch check report >/dev/null
+  # set --name with bad steps must not switch `current`; planted dirs are refused, not written into
+  bash "$s" use default >/dev/null; bash "$s" set --name other x x 2>/dev/null && fail dup-accepted
+  [[ "$(cat "$d/current")" == default ]] || fail "set-name-partial-switch: $(cat "$d/current")"
+  mkdir "$d/dirchain.state"; bash "$s" use dirchain >/dev/null; bash "$s" set a 2>/dev/null && fail dir-state-accepted
+  [[ -z "$(ls -A "$d/dirchain.state")" ]] || fail dir-state-written-into
+  rmdir "$d/dirchain.state"; bash "$s" use loop >/dev/null
   bash "$s" done fetch >/dev/null                                    # single-step loop body
   bash "$s" cycle check >/dev/null; [[ -f "$d/loop.cycle" ]] || fail cycle-file
   [[ "$(r)" == "[loop] fetch ✓ → [check ● ↻2] → report ○" ]] || fail "cycle-single: $(r)"
   bash "$s" clear; [[ ! -e "$d/loop.cycle" ]] || fail cycle-clear
   bash "$s" use default >/dev/null
+  # a symlinked state DIR is refused by clear/list too (clear would rm through it)
+  local sd="$root/symdir" tgt="$root/tgt"; mkdir -p "$tgt"; : > "$tgt/default.state"; ln -sfn "$tgt" "$sd"
+  STEP_STATUS_DIR="$sd" bash "$s" clear 2>/dev/null && fail clear-through-symlink-dir
+  [[ -e "$tgt/default.state" ]] || fail clear-deleted-through-symlink
+  STEP_STATUS_DIR="$sd" bash "$s" list 2>/dev/null && fail list-through-symlink-dir
   # symlinked state artifacts are refused, never written through (greptile #1)
   local out2="$d/../outside2"; : > "$out2"
   ln -sfn "$out2" "$d/current"; bash "$s" use victim >/dev/null 2>&1     # symlink → external file
@@ -310,14 +342,14 @@ selfcheck() {
   printf 'active\tx\t\n' > "$d/$(printf 'ev\033il').state"
   [[ "$(bash "$s" list)" != *$'\033'* ]] || fail list-control-bytes
   [[ "$(cat "$d/.gitignore")" == "*" ]] || fail gitignore
-  rm -rf "$d"; echo "selfcheck OK"
+  rm -rf "$root"; echo "selfcheck OK"
 }
 
 main() {
   local cmd="${1:-render}"; shift || true
   case "$cmd" in
     set)   if [[ "${1-}" == --name || "${1-}" == -n ]]; then
-             need_name "${2-}" "set --name" && switch_chain "$2" || return $?; shift 2
+             need_name "${2-}" "set --name" && check_steps "${@:3}" && switch_chain "$2" || return $?; shift 2   # validate before touching `current'
            fi
            set_chain "$@" && render ;;
     start) need_name "${1-}" start && valid_name "${2-x}" && update "$1" active "${2-}" && render ;;
@@ -326,7 +358,7 @@ main() {
     cycle) cycle_chain "$@" && render ;;
     msg)   msg_step "$@" && render ;;
     render) render ;;
-    clear) [[ -L "$STATE" || -L "$NOTE" ]] || rm -f "$STATE" "$NOTE" "$DIR/$CHAIN.cycle" ;;
+    clear) safe_state || return 1; rm -f "$STATE" "$NOTE" "$DIR/$CHAIN.cycle" ;;
     use)   need_name "${1-}" use && use_chain "$1" ;;
     list)  list_chains ;;
     note)  note_chain "$@" ;;

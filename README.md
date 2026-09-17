@@ -53,7 +53,7 @@ by name, because it replaces `statusLine`: `./install.sh workflow-tracker`.
 ```bash
 ./install.sh                      # install ALL skills
 ./install.sh prompt-coach         # install one
-./install.sh workflow-tracker          # install + wrap your status line with the step chain
+./install.sh workflow-tracker     # install + wrap your status line with the step chain
 ./install.sh pptx-slide-design pptx-flowchart-design   # install several
 ./install.sh --list               # list available skills
 ./install.sh --no-hooks           # install without wiring hooks / status line (prompt-coach, workflow-tracker)
@@ -107,6 +107,11 @@ bash $STEPS cycle loop                              # → [fix-auth] init ✓ �
 bash $STEPS start loop "check agent status"
 bash $STEPS use pr-42; bash $STEPS note "flaky auth test"; bash $STEPS list
 ```
+
+Upgrading from the old name: `/plugin uninstall step-status@du-skill-collection` before
+installing workflow-tracker (both active = duplicate hooks). Symlink installs migrate on their
+own: `./uninstall.sh` drops the old `step-status` link and the status-line wiring script rewrites
+old `step-status/scripts/` paths in `settings.json`.
 
 Optional status-line mirror: `/workflow-tracker setup` (or `./install.sh workflow-tracker`) wraps an
 existing `statusLine` command such as ccstatusline, or installs standalone;
