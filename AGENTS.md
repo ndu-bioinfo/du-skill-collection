@@ -54,6 +54,10 @@ skills. Read this before making changes. See [README.md](README.md) for user-fac
   `for s in workflow-tracker/scripts/*.sh; do bash -n "$s"; done`. `install.sh workflow-tracker`
   edits `statusLine` in settings.json (wraps an existing command or installs standalone) —
   only when workflow-tracker is named explicitly; test against a throwaway `CLAUDE_SETTINGS` first.
+- **pr-preflight checks:** `python3 -m pytest pr-preflight/tests` and `bash -n pr-preflight/hooks/preflight_nudge.sh`
+  (hook tests need `jq` and `git`). pr-preflight is **plugin-only**: two skills under `skills/`,
+  no root `SKILL.md`, so `install.sh` skips it. `skills/pr-self-check/references/unslop.md` is
+  vendored MIT — keep `unslop.LICENSE` beside it; a test pins its SHA-256.
 - **settings.json edits never swallow a parse error.** All three python blocks (install.sh,
   uninstall.sh, wire_statusline.sh) abort on invalid JSON and write via temp + `os.replace`.
   Keep it that way: a silent `{}` fallback wipes the user's config.

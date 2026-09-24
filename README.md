@@ -11,6 +11,7 @@ directory with a `SKILL.md` that Claude loads when its trigger conditions match.
 | [pptx-flowchart-design](pptx-flowchart-design/SKILL.md) | Building flowcharts in `.pptx` via python-pptx — layout grid, arrow patterns, OOXML gotchas that cause PowerPoint "repair" prompts, and safe editing. |
 | [pptx-slide-design](pptx-slide-design/SKILL.md) | Designing `.pptx` slides via python-pptx — layout, typography, and composition patterns that read as intentional rather than auto-generated. |
 | [workflow-tracker](workflow-tracker/SKILL.md) | A step-chain progress ticker Claude posts in the conversation at each phase of a multi-step workflow: `init ✓ → loop\|check agent status ● → summary ○`. Named chains let you park and resume several workflows per directory. Optional status-line mirror. |
+| [pr-preflight](pr-preflight/skills/pr-flowchart/SKILL.md) | Plugin-only (two skills + a hook; no root `SKILL.md`, so `install.sh` skips it). After `gh pr create` or `git push`, keeps a Mermaid flowchart of the change in an owned, SHA-stamped section of the PR description (`pr-flowchart`); on PR open, runs `/simplify` on the code and the unslop rules on the prose, leaving edits in the working tree for you to approve (`pr-self-check`). Diffs are secret- and PII-filtered first. Needs `gh`, `jq`, `python3` (3.9+). |
 | [prompt-coach](prompt-coach/SKILL.md) | An advisory, session-scoped prompt-quality coaching layer. Surfaces one inline `🧭 coach:` tip per turn, keeps an off-context worklog, and produces on-demand session summaries. Hooks-based; ships **OFF**. |
 
 ## Quick start (plugin marketplace)
@@ -22,11 +23,12 @@ pick and install individual ones:
 /plugin marketplace add ndu-bioinfo/du-skill-collection
 /plugin install workflow-tracker@du-skill-collection
 /plugin install prompt-coach@du-skill-collection
+/plugin install pr-preflight@du-skill-collection
 /plugin install pptx-slide-design@du-skill-collection
 /plugin install pptx-flowchart-design@du-skill-collection
 ```
 
-Hooks (prompt-coach, workflow-tracker) ship inside the plugins. workflow-tracker needs no setup;
+Hooks (prompt-coach, workflow-tracker, pr-preflight) ship inside the plugins. workflow-tracker needs no setup;
 run `/workflow-tracker setup` only if you also want the chain mirrored in your status line.
 Update everything later with `/plugin marketplace update du-skill-collection`.
 
