@@ -1,0 +1,8 @@
+{
+  "name": "pr-preflight",
+  "version": "1.1.0",
+  "description": "Gets a PR ready before reviewers look: a hook keeps a Mermaid flowchart of the change in the PR description, and on PR open a self-check runs /simplify on the code and the unslop rules on the prose, leaving the edits for the author to approve. Diffs are secret- and PII-filtered first.",
+  "author": {
+    "name": "ndu-bioinfo"
+  }
+}
