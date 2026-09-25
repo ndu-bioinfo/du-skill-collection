@@ -4,13 +4,11 @@
 #   ./install.sh                          # install ALL skills
 #   ./install.sh prompt-coach             # install specific skill(s)
 #   ./install.sh pptx-slide-design pptx-flowchart-design
-#   ./install.sh --no-hooks               # skip wiring prompt-coach/workflow-tracker hooks + status line
+#   ./install.sh --no-hooks               # skip wiring prompt-coach's hooks
 #   ./install.sh --list                   # list available skills and exit
 #
 # prompt-coach's hooks are wired into settings.json automatically when it's
 # installed, so a fresh `./install.sh` is all anyone needs. Pass --no-hooks to skip.
-# workflow-tracker's status line (wrap or standalone) + SessionStart hook are wired only when
-# you name it explicitly (`./install.sh workflow-tracker`), since that replaces statusLine.
 #
 # Symlinks (not copies) so `git pull` updates every installed skill in place.
 # Idempotent: re-running is safe. Override locations with $CLAUDE_SKILLS_DIR /
@@ -40,14 +38,12 @@ for a in "$@"; do
 done
 
 # No names → all skills.
-EXPLICIT=${#NAMES[@]}
 if [ ${#NAMES[@]} -eq 0 ]; then
   while IFS= read -r s; do NAMES+=("$s"); done < <(available)
 fi
 
 mkdir -p "$SKILLS_DIR"
 installed_prompt_coach=0
-installed_step_status=0
 
 for name in "${NAMES[@]}"; do
   src="$REPO/$name"
@@ -63,21 +59,7 @@ for name in "${NAMES[@]}"; do
   ln -sfn "$src" "$dst"
   echo "installed: $name -> $dst"
   [ "$name" = "prompt-coach" ] && installed_prompt_coach=1
-  [ "$name" = "workflow-tracker" ] && installed_step_status=1
 done
-
-# workflow-tracker renders in the status line. Plugins can't set statusLine, so wire it here
-# (wrap an existing command or install standalone) plus the SessionStart hook — but only
-# when workflow-tracker was asked for by name: replacing statusLine is not a side effect anyone
-# installing the pptx skills should get.
-if [ "$installed_step_status" = 1 ]; then
-  if [ "$WITH_HOOKS" = 1 ] && [ "$EXPLICIT" -gt 0 ]; then
-    CLAUDE_SETTINGS="$SETTINGS" bash "$REPO/workflow-tracker/scripts/wire_statusline.sh"
-  else
-    echo "note: workflow-tracker status line not wired. Run: ./install.sh workflow-tracker"
-    echo "      (or bash workflow-tracker/scripts/wire_statusline.sh) to wrap your status line."
-  fi
-fi
 
 # prompt-coach only coaches once its hooks are wired into settings.json. Do that
 # only on explicit --with-hooks (editing settings is opt-in).
