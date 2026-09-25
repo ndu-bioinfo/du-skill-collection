@@ -1,18 +1,12 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "du-skill-collection",
-  "description": "Niu Du's Claude Code skills — pptx design craft, prompt coaching, a step-chain progress ticker, and PR preflight. Install each one individually.",
+  "description": "Niu Du's Claude Code skills — pptx design craft, prompt coaching, and PR preflight. Install each one individually.",
   "owner": {
     "name": "ndu-bioinfo",
     "url": "https://github.com/ndu-bioinfo"
   },
   "plugins": [
-    {
-      "name": "workflow-tracker",
-      "source": "./workflow-tracker",
-      "description": "Step-chain progress ticker posted in the conversation during multi-step workflows: init ✓ → loop|detail ● → summary ○. Optional status-line mirror.",
-      "category": "productivity"
-    },
     {
       "name": "pr-preflight",
       "source": "./pr-preflight",

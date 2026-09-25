@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Uninstall skills that were installed from this repo (remove the symlinks in
-# ~/.claude/skills/; for prompt-coach unwire its hooks, for workflow-tracker restore the
-# previous statusLine and drop its SessionStart hook in settings.json).
+# ~/.claude/skills/; for prompt-coach unwire its hooks in settings.json).
 #
 #   ./uninstall.sh                 # uninstall ALL skills from this repo
 #   ./uninstall.sh prompt-coach    # uninstall specific skill(s)
@@ -32,7 +31,6 @@ if [ ${#NAMES[@]} -eq 0 ]; then
 fi
 
 removed_prompt_coach=0
-removed_step_status=0
 for name in "${NAMES[@]}"; do
   dst="$SKILLS_DIR/$name"
   if [ ! -L "$dst" ]; then
@@ -42,8 +40,7 @@ for name in "${NAMES[@]}"; do
   target="$(readlink "$dst")"
   case "$target" in
     "$REPO/"*) rm -f "$dst"; echo "uninstalled: $name"
-               [ "$name" = "prompt-coach" ] && removed_prompt_coach=1
-               [ "$name" = "workflow-tracker" ] && removed_step_status=1 ;;
+               [ "$name" = "prompt-coach" ] && removed_prompt_coach=1 ;;
     *) echo "skip: $dst points to $target (not this repo) — leaving it alone" >&2 ;;
   esac
 done
@@ -80,16 +77,6 @@ os.replace(tmp, settings)
 print(f"unwired {removed} prompt-coach hook(s) from " + settings if removed
       else "no prompt-coach hooks found in " + settings)
 PY
-fi
-
-# Pre-rename installs left a step-status symlink into this repo: drop it too.
-if [ -L "$SKILLS_DIR/step-status" ] && case "$(readlink "$SKILLS_DIR/step-status")" in "$REPO/"*) true;; *) false;; esac; then
-  rm -f "$SKILLS_DIR/step-status"; echo "uninstalled: step-status (pre-rename symlink)"; removed_step_status=1
-fi
-
-# Unwire workflow-tracker: restore the wrapped status line (or drop the standalone one) and its hook.
-if [ "$removed_step_status" = 1 ] && [ -f "$SETTINGS" ]; then
-  CLAUDE_SETTINGS="$SETTINGS" bash "$REPO/workflow-tracker/scripts/wire_statusline.sh" --unwire
 fi
 
 echo

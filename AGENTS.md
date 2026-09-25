@@ -32,8 +32,7 @@ skills. Read this before making changes. See [README.md](README.md) for user-fac
   `.claude-plugin/plugin.json`; hooks go in `hooks/hooks.json` (auto-loaded — never also
   list it under `plugin.json` `hooks`, Claude Code rejects the duplicate) and reference scripts via
   `${CLAUDE_PLUGIN_ROOT}` (never absolute paths — plugins are copied into a cache dir on
-  install). Plugins cannot set `statusLine`; workflow-tracker wires that via
-  `scripts/wire_statusline.sh`.
+  install). Plugins cannot set `statusLine`.
 - `install.sh` auto-discovers skills (any dir with a `SKILL.md`). Adding a skill needs no
   installer change — add a README table row, a `plugin.json`, and a marketplace entry, then
   run `claude plugin validate .`.
@@ -49,18 +48,13 @@ skills. Read this before making changes. See [README.md](README.md) for user-fac
 - **prompt-coach checks:**
   `python3 prompt-coach/scripts/render_worklog.py --selfcheck` and
   `for s in prompt-coach/scripts/*.sh; do bash -n "$s"; done`.
-- **workflow-tracker checks:**
-  `bash workflow-tracker/scripts/steps.sh --selfcheck`, `bash workflow-tracker/scripts/wire_statusline.sh --selfcheck`, and
-  `for s in workflow-tracker/scripts/*.sh; do bash -n "$s"; done`. `install.sh workflow-tracker`
-  edits `statusLine` in settings.json (wraps an existing command or installs standalone) —
-  only when workflow-tracker is named explicitly; test against a throwaway `CLAUDE_SETTINGS` first.
 - **pr-preflight checks:** `python3 -m pytest pr-preflight/tests` and `bash -n pr-preflight/hooks/preflight_nudge.sh`
   (hook tests need `jq` and `git`). pr-preflight is **plugin-only**: two skills under `skills/`,
   no root `SKILL.md`, so `install.sh` skips it. `skills/pr-self-check/references/unslop.md` is
   vendored MIT — keep `unslop.LICENSE` beside it; a test pins its SHA-256.
-- **settings.json edits never swallow a parse error.** All three python blocks (install.sh,
-  uninstall.sh, wire_statusline.sh) abort on invalid JSON and write via temp + `os.replace`.
-  Keep it that way: a silent `{}` fallback wipes the user's config.
+- **settings.json edits never swallow a parse error.** The python blocks in install.sh and
+  uninstall.sh abort on invalid JSON and write via temp + `os.replace`. Keep it that way: a
+  silent `{}` fallback wipes the user's config.
 
 ## Troubleshooting / gotchas
 
